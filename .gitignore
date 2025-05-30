@@ -1,0 +1,40 @@
+# --- Build artifacts ---
+/bin/
+/obj/
+/*.o
+
+# --- Nix ---
+result            # flake result link
+.dev-environment  # old nix-shell env dir
+*.drv             # Nix derivations
+.nix-channels
+.nix-profile
+
+# --- IDE / editor ---
+# Vim
+*.swp
+*.swo
+# Emacs
+*~
+# VSCode
+.vscode/
+# CLion / JetBrains
+.idea/
+
+# --- CMake / autotools ---
+CMakeFiles/
+CMakeCache.txt
+Makefile.cmake
+cmake_install.cmake
+build/
+
+# --- Logs, reports, temporary files ---
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# --- Miscellaneous ---
+.DS_Store
+tags
