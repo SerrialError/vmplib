@@ -1,188 +1,159 @@
 #include "motion-profiling.hpp"
-#include "types.hpp"
-#include "bezier.hpp"
-#include <cmath>
-#include <iostream>
-#include <iomanip>
 #include <algorithm>
-#include <limits>
+#include <cmath>
 
-float sCurrent = -100;
-float prev_t = 0;
-float tim = 0;
-float curSpeed = 0.001;
-float prevKeyFrame = 0;
+using namespace MotionUtils;
 
-// Vector to store the points
-std::vector<Pose> poses;
-std::vector<Point> pose;
-std::vector<Pose> ramsetePoses;
-
-// Vector to store the points
-std::vector<VelocityLayout> velocities;
-std::vector<VelocityLayout> dec_velocities;
-std::vector<VelocityLayout> ramseteVelocities;
-
-Velocities twoDimensionalTrapVel(const std::vector<Point>& controlPoints, float max_linear_velocity, float max_linear_acceleration, float deceleration_distance, float initial_velocity, float exit_velocity, std::vector<KeyframeVelocities>& desired_vels, bool useKeyFrames, float timestep) {
-	tim += timestep;
-	if (desired_vels[prevKeyFrame + 1].time < prev_t) {
-		prevKeyFrame += 1;
-	}
-	float trackWidth = 0.288925;
-	float acceleration_distance = (pow(max_linear_velocity, 2) - pow(initial_velocity, 2)) / (2 * max_linear_acceleration);
-	sCurrent = sFunction(controlPoints, prev_t);
-	float keyFrameVelocityLimit = 1000;
-	if (useKeyFrames) {
-	    float v_i2 = desired_vels[prevKeyFrame].velocity * desired_vels[prevKeyFrame].velocity;
-    	float v_f2 = desired_vels[prevKeyFrame + 1].velocity * desired_vels[prevKeyFrame + 1].velocity;
-	    keyFrameVelocityLimit = sqrt(v_i2 + (v_f2 - v_i2) * ((sFunction(controlPoints, prev_t)) / (sFunction(controlPoints, desired_vels[prevKeyFrame + 1].time))));	    
-	}
-	// calculates the turning radius for the curvature velocity limit
-	float turn_radius = 1 / curvature(controlPoints, prev_t);
-	// calculates the curvature velocity limit
-	float curvature_velocity_limit = max_linear_velocity * turn_radius / (turn_radius + trackWidth / 2);
-	// calculates the acceleration limits
-	float linear_velocity_acceleration_limit;
-	if (sCurrent < deceleration_distance) {
-		linear_velocity_acceleration_limit = curSpeed + (max_linear_acceleration * timestep);
-
-	}
-	else {
-		if (sCurrent > acceleration_distance) {
-			linear_velocity_acceleration_limit = sqrt(pow(exit_velocity, 2) - ((sFunction(controlPoints, 1) - sCurrent) * (pow(exit_velocity, 2) - pow(max_linear_velocity, 2)) / (sFunction(controlPoints, 1) - deceleration_distance)));
-		}
-	}
-	float linear_velocity_deceleration_limit = curSpeed - (max_linear_acceleration * timestep);
-	keyFrameVelocityLimit = std::max({keyFrameVelocityLimit, linear_velocity_deceleration_limit});
-	// Find the maximum allowable limits
-	float desired_linear_velocity = std::min({curvature_velocity_limit, linear_velocity_acceleration_limit, keyFrameVelocityLimit, max_linear_velocity});
-	// Calculates the distance to be traveled in the allotted time frame  
-	float deltaS = desired_linear_velocity * timestep;
-	// Calculates when T corresponds with the distance that will be traveled
-	float t = findTForS(controlPoints, sCurrent, deltaS);
-	float turning_velocity_component = curvature(controlPoints, t) * desired_linear_velocity;
-	Pose newPoint = findXandY(controlPoints, t);
-	poses.push_back(newPoint);
-	VelocityLayout newVelo = {desired_linear_velocity, turning_velocity_component, tim};
-	velocities.push_back(newVelo);
-	prev_t = t;
-	curSpeed = desired_linear_velocity;
-	return{desired_linear_velocity, turning_velocity_component};
+TrapezoidalProfile::TrapezoidalProfile(
+    const std::vector<Point>& controlPts,
+    float maxLinVel,
+    float maxLinAccel,
+    float decelDist,
+    float startVel,
+    float endVel,
+    const std::vector<KeyframeVelocities>& keyframes,
+    bool useKeyframes,
+    float dt
+)
+    : s_current_(-100.0f),
+      prev_t_(0.0f),
+      time_accum_(0.0f),
+      cur_speed_(startVel),
+      prev_keyframe_idx_(0),
+      control_(controlPts),
+      max_lin_vel_(maxLinVel),
+      max_lin_accel_(maxLinAccel),
+      decel_distance_(decelDist),
+      exit_velocity_(endVel),
+      initial_velocity_(startVel),   // store the start velocity
+      use_keyframes_(useKeyframes),
+      dt_(dt),
+      keyframes_(keyframes)
+{
+    poses_.reserve(1000);
+    velocities_.reserve(1000);
 }
-float sinc(float x) {
-	return std::abs(x) < 1e-5 ? 1.0f : std::sin(x) / x;
+
+bool TrapezoidalProfile::isFinished() const {
+    return prev_t_ >= 1.0f;
 }
-void moveToPose(std::vector<Pose> inPoses, std::vector<VelocityLayout> inVelocities, float max_linear_velocity, float B, float zeta, float dt) {
-	float trackWidth = 0.288925f;
-	float omega_max = (2 * max_linear_velocity) / trackWidth;
-	float k1 = B;
-        bool reverse = true;
-	Pose ramPose = inPoses.front();
-	ramPose.theta = M_PI + ramPose.theta;
-	float ramTim = 0;
 
-
-	// main loop
-	for (float i = 0; i < inPoses.size(); i++) {
-		ramTim += dt;
-		if (reverse) {
-            inVelocities[i].linear = -inVelocities[i].linear;
-    		inPoses[i].theta += M_PI;
-		}
-        float k2 = std::sqrt(inVelocities[i].angular * inVelocities[i].angular + B * inVelocities[i].linear * inVelocities[i].linear);
-		float error_theta = inPoses[i].theta - ramPose.theta;
-		// wrap into [−π,π]:
-
-		error_theta = fmodf(error_theta + (float)M_PI, 2.0f * (float)M_PI) - (float)M_PI;
-		
-		float dx = inPoses[i].x - ramPose.x;
-		float dy = inPoses[i].y - ramPose.y;
-		float cosTheta = cosf(ramPose.theta);
-		float sinTheta = sinf(ramPose.theta);
-		float error_x = sinTheta * dy + cosTheta * dx;
-		float error_y = cosTheta * dy - sinTheta * dx;
-		float linearOut = inVelocities[i].linear * cos(error_theta) + k1 * error_x;
-		
-		float angularOut = inVelocities[i].angular + k2 * (inVelocities[i].linear) * sinc(error_theta) * error_y + k1 * error_theta;
- 
-		float leftVel = linearOut - (angularOut * trackWidth) / 2;
-		float rightVel = linearOut + (angularOut * trackWidth) / 2;
-
-		float v = (leftVel + rightVel) / 2;
-		float w = (rightVel - leftVel) / trackWidth;
-		ramPose.x += v * cosf(ramPose.theta) * dt;
-		ramPose.y += v * sinf(ramPose.theta) * dt;
-		ramPose.theta += w * dt;
-		ramsetePoses.push_back(ramPose);
-		VelocityLayout newVelo = {v, w, ramTim};
-		ramseteVelocities.push_back(newVelo);
-	
-	}
+const std::vector<Pose>& TrapezoidalProfile::getPoses() const {
+    return poses_;
 }
-void printVels(std::string splineName, const std::vector<Point>& controlPoints, std::vector<KeyframeVelocitiesXandY> keyFrameVelocityInitList, bool useKeyFrames) {
-	std::vector<KeyframeVelocities> keyFrameVelocityList = convertToTFrame(controlPoints, keyFrameVelocityInitList);
-	float maxVelocity = 1.94503855166; // meters per second
-	float maxAcceleration = 6.67663722193; // meters per second per second
-	float initialVelocity = keyFrameVelocityList.front().velocity;
-	float exitVelocity = keyFrameVelocityList.back().velocity;
-	curSpeed = initialVelocity;
-	prev_t = 0;
-	tim = 0;
-	float decelerationDistance = sFunction(controlPoints, 1) - (pow(exitVelocity, 2) - pow(maxVelocity, 2)) / (-2 * maxAcceleration);
 
-	while (prev_t < 1) {
-		twoDimensionalTrapVel(controlPoints, maxVelocity, maxAcceleration, decelerationDistance, initialVelocity, exitVelocity, keyFrameVelocityList, useKeyFrames, 0.01);
-	}
-	// Output the points in the desired format
-	std::cout << "X = [";
-	for (size_t i = 0; i < poses.size(); ++i) {
-		std::cout << "(" << std::fixed << poses[i].x << "," << poses[i].y << ")";
-		if (i < poses.size() - 1) {
-			std::cout << ",";
-		}
-	}
-	std::cout << "]" << std::endl;
+const std::vector<VelocityLayout>& TrapezoidalProfile::getVelocities() const {
+    return velocities_;
+}
 
-	std::cout << "L = [";
-	for (size_t i = 0; i < velocities.size(); ++i) {
-		std::cout << "(" << std::fixed << velocities[i].time << "," << velocities[i].linear << ")";
-		if (i < poses.size() - 1) {
-			std::cout << ",";
-		}
-	}
-	std::cout << "]" << std::endl;
-	std::cout << "A = [";
-	for (size_t i = 0; i < velocities.size(); ++i) {
-		std::cout << "(" << std::fixed << velocities[i].time << "," << velocities[i].angular << ")";
-		if (i < poses.size() - 1) {
-			std::cout << ",";
-		}
-	}
-	std::cout << "]" << std::endl;
-	moveToPose(poses, velocities, maxVelocity, 2, 0.7, 0.01);
-	std::cout << "X_r = [";
-	for (size_t i = 0; i < ramsetePoses.size(); ++i) {
-		std::cout << "(" << std::fixed << ramsetePoses[i].x << "," << ramsetePoses[i].y << ")";
-		if (i < ramsetePoses.size() - 1) {
-			std::cout << ",";
-		}
-	}
-	std::cout << "]" << std::endl;
+float TrapezoidalProfile::computeCurvatureVelocityLimit(float t) const {
+    const float trackWidth = 0.288925f;
+    float curv = curvature(control_, t);
+    if (std::abs(curv) < 1e-6f) {
+        return max_lin_vel_;
+    }
+    float turn_radius = 1.0f / curv;
+    return max_lin_vel_ * turn_radius / (turn_radius + trackWidth / 2.0f);
+}
 
-	std::cout << "L_r = [";
-	for (size_t i = 0; i < ramseteVelocities.size(); ++i) {
-		std::cout << "(" << std::fixed << ramseteVelocities[i].time << "," << ramseteVelocities[i].linear << ")";
-		if (i < poses.size() - 1) {
-			std::cout << ",";
-		}
-	}
-	std::cout << "]" << std::endl;
-	std::cout << "A_r = [";
-	for (size_t i = 0; i < ramseteVelocities.size(); ++i) {
-		std::cout << "(" << std::fixed << ramseteVelocities[i].time << "," << ramseteVelocities[i].angular << ")";
-		if (i < poses.size() - 1) {
-			std::cout << ",";
-		}
-	}
-	std::cout << "]" << std::endl;
+float TrapezoidalProfile::computeAccelerationLimit(float s) const {
+    // If still in early “acceleration” phase (before decelerationDistance), ramp up:
+    if (s < decel_distance_) {
+        return cur_speed_ + (max_lin_accel_ * dt_);
+    }
+
+    // Otherwise, compute the “coast / decel” region:
+    float total_length = sFunction(control_, 1.0f);
+
+    // Determine which “start‐velocity” to use:
+    //   - If using keyframes, use keyframes_.front().velocity
+    //   - Otherwise, use initial_velocity_
+    float vel0 = initial_velocity_;
+    if (use_keyframes_ && !keyframes_.empty()) {
+        vel0 = keyframes_.front().velocity;
+    }
+
+    // distance at which we'd transition from accel → cruise:
+    float acc_dist = (std::pow(max_lin_vel_, 2) - std::pow(vel0, 2))
+                     / (2.0f * max_lin_accel_);
+
+    if (s > acc_dist) {
+        float numerator = std::pow(exit_velocity_, 2) - std::pow(max_lin_vel_, 2);
+        float denom    = (total_length - decel_distance_);
+        float term     = (total_length - s) * numerator / denom;
+        float vel_sq   = std::pow(exit_velocity_, 2) - term;
+        return (vel_sq > 0.0f ? std::sqrt(vel_sq) : exit_velocity_);
+    }
+
+    // If we haven't reached “acc_dist” yet, just return current speed
+    return cur_speed_;
+}
+
+float TrapezoidalProfile::computeDecelerationLimit(float) const {
+    return cur_speed_ - (max_lin_accel_ * dt_);
+}
+
+float TrapezoidalProfile::computeKeyframeLimit() {
+    if (!use_keyframes_ || prev_keyframe_idx_ + 1 >= keyframes_.size()) {
+        return std::numeric_limits<float>::infinity();
+    }
+
+    const auto& kf0 = keyframes_[prev_keyframe_idx_];
+    const auto& kf1 = keyframes_[prev_keyframe_idx_ + 1];
+
+    if (kf1.time < time_accum_) {
+        ++prev_keyframe_idx_;
+    }
+
+    float vi2 = kf0.velocity * kf0.velocity;
+    float vf2 = kf1.velocity * kf1.velocity;
+    float s_now = sFunction(control_, prev_t_);
+    float s_kf1 = sFunction(control_, kf1.time);
+
+    if (s_kf1 <= 0.0f) {
+        return kf1.velocity;
+    }
+    float ratio = s_now / s_kf1;
+    float vel_lim_sq = vi2 + (vf2 - vi2) * ratio;
+    return (vel_lim_sq > 0.0f ? std::sqrt(vel_lim_sq) : kf1.velocity);
+}
+
+float TrapezoidalProfile::findNextT(float s0, float deltaS) const {
+    return findTForS(control_, s0, deltaS);
+}
+
+VelocityLayout TrapezoidalProfile::step() {
+    if (isFinished()) {
+        return { 0.0f, 0.0f, time_accum_ };
+    }
+
+    time_accum_ += dt_;
+    s_current_ = sFunction(control_, prev_t_);
+
+    float keyframe_lim  = computeKeyframeLimit();
+    float curvature_lim = computeCurvatureVelocityLimit(prev_t_);
+    float accel_lim     = computeAccelerationLimit(s_current_);
+    float decel_lim     = computeDecelerationLimit(s_current_);
+
+    float desired_linear_without_decel = std::min({ curvature_lim,
+                                      accel_lim,
+                                      keyframe_lim,
+                                      max_lin_vel_ });
+    float desired_linear = std::max({desired_linear_without_decel, decel_lim});
+    float deltaS = desired_linear * dt_;
+    float next_t = findNextT(s_current_, deltaS);
+
+    float kappa = curvature(control_, next_t);
+    float turning_component = kappa * desired_linear;
+
+    Pose newPose = findXandY(control_, next_t);
+    poses_.push_back(newPose);
+
+    VelocityLayout vlay{ desired_linear, turning_component, time_accum_ };
+    velocities_.push_back(vlay);
+
+    prev_t_    = next_t;
+    cur_speed_ = desired_linear;
+
+    return vlay;
 }
