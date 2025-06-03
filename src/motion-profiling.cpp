@@ -63,26 +63,11 @@ float TrapezoidalProfile::computeAccelerationLimit(float s) const {
     }
 
     // Otherwise, compute the “coast / decel” region:
-    float total_length = sFunction(control_, 1.0f);
-
-    // Determine which “start‐velocity” to use:
-    //   - If using keyframes, use keyframes_.front().velocity
-    //   - Otherwise, use initial_velocity_
-    float vel0 = initial_velocity_;
-    if (use_keyframes_ && !keyframes_.empty()) {
-        vel0 = keyframes_.front().velocity;
-    }
-
-    // distance at which we'd transition from accel → cruise:
-    float acc_dist = (std::pow(max_lin_vel_, 2) - std::pow(vel0, 2))
-                     / (2.0f * max_lin_accel_);
-
-    if (s > acc_dist) {
-        float numerator = std::pow(exit_velocity_, 2) - std::pow(max_lin_vel_, 2);
-        float denom    = (total_length - decel_distance_);
-        float term     = (total_length - s) * numerator / denom;
-        float vel_sq   = std::pow(exit_velocity_, 2) - term;
-        return (vel_sq > 0.0f ? std::sqrt(vel_sq) : exit_velocity_);
+    float total_length = sFunction(control_, 1.0f);    
+    float accel_dist = (pow(max_lin_vel_, 2) - pow(initial_velocity_, 2)) / (2 * max_lin_accel_);
+    if (s > accel_dist) {
+        float linear_velocity_decel_limit = sqrt(pow(exit_velocity_, 2) - ((total_length - s) * (pow(exit_velocity_, 2) - pow(max_lin_vel_, 2)) / (total_length - decel_distance_)));
+        return (linear_velocity_decel_limit);
     }
 
     // If we haven't reached “acc_dist” yet, just return current speed
@@ -135,11 +120,11 @@ VelocityLayout TrapezoidalProfile::step() {
     float accel_lim     = computeAccelerationLimit(s_current_);
     float decel_lim     = computeDecelerationLimit(s_current_);
 
-    float desired_linear_without_decel = std::min({ curvature_lim,
+    float desired_linear = std::min({ curvature_lim,
                                       accel_lim,
                                       keyframe_lim,
                                       max_lin_vel_ });
-    float desired_linear = std::max({desired_linear_without_decel, decel_lim});
+    // float desired_linear = std::max({desired_linear_without_decel, decel_lim});
     float deltaS = desired_linear * dt_;
     float next_t = findNextT(s_current_, deltaS);
 
