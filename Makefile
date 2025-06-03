@@ -8,35 +8,34 @@ INCDIR := include
 OBJDIR := obj
 BINDIR := bin
 
-# Sources
-SRCS := $(SRCDIR)/main.cpp \
-        $(SRCDIR)/2dmpsimulate.cpp
+# Grab all .cpp files under src/
+SRCS := $(wildcard $(SRCDIR)/*.cpp)
 
-# Objects (in obj/)
+# Turn “src/foo.cpp” into “obj/foo.o”
 OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 
-# Single executable
+# Final executable
 EXE := $(BINDIR)/main
 
-# Default target
+# Default target: make sure bins + objs exist, then build the exe
 all: $(BINDIR) $(OBJDIR) $(EXE)
 
-# Link the final binary from both .o files
+# Link step: link all .o files into bin/main
 $(EXE): $(OBJS)
 	$(CXX) $^ -o $@
 
-# Compile each .cpp → .o
+# Compile step: for each src/%.cpp → obj/%.o
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Create dirs if needed
+# Create bin/ and obj/ if they don’t exist
 $(OBJDIR) $(BINDIR):
 	mkdir -p $@
 
-# Clean up
+# “make clean”
 .PHONY: clean
 clean:
 	rm -rf $(OBJDIR) $(BINDIR)
 
-# Phony for default
+# Mark “all” as phony so it always runs
 .PHONY: all

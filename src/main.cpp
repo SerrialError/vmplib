@@ -1,4 +1,6 @@
-#include "bezier.hpp"
+#include "motion-profiling.hpp"
+#include "types.hpp"
+#include <vector>
 #include <string>
 
 int main() {
