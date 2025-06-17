@@ -1,6 +1,7 @@
 // ramsete.cpp
 #include "ramsete.hpp"
 #include <cmath>
+#include <iostream>
 
 using namespace MotionUtils;
 
@@ -14,7 +15,7 @@ RamseteFollower::RamseteFollower(float trackWidth,
       dt_(dt),
       reverse_(false),
       current_pose_{0.0f, 0.0f, 0.0f},
-      time_accum_(0.0f),
+      time_accum_(0.00f),
       index_(0),
       ref_poses_ptr_(nullptr),
       ref_vels_ptr_(nullptr)
@@ -31,17 +32,18 @@ void RamseteFollower::initialize(const std::vector<Pose>& refPoses,
     ref_vels_ptr_  = &refVels;
     reverse_       = reverse;
     index_         = 0;
-    time_accum_    = 0.0f;
+    time_accum_    = 0.00f;
 
     // Start robot at the first reference pose (optionally reversed)
     current_pose_ = refPoses.front();
+    std::cout << refVels.front().linear << std::endl;
     if (reverse_) {
         current_pose_.theta = wrapAngle(current_pose_.theta + static_cast<float>(M_PI));
     }
     executed_poses_.clear();
     executed_vels_.clear();
-    executed_poses_.push_back(current_pose_);
-    executed_vels_.push_back({ refVels.front().linear, refVels.front().angular, 0.0f });
+    // executed_poses_.push_back(current_pose_);
+    // executed_vels_.push_back({ refVels.front().linear, refVels.front().angular, 0.01f });
 }
 
 bool RamseteFollower::isFinished() const {
@@ -88,8 +90,8 @@ VelocityLayout RamseteFollower::step() {
     float dy = refPose.y - current_pose_.y;
     float cos_t = std::cos(current_pose_.theta);
     float sin_t = std::sin(current_pose_.theta);
-    float error_x =  cos_t * dy - sin_t * dx;  // note swapped from original
-    float error_y =  sin_t * dy + cos_t * dx;
+    float error_x =  sin_t * dy + cos_t * dx;
+    float error_y =  cos_t * dy - sin_t * dx;
 
     // Gains
     float k2 = std::sqrt(w_ref * w_ref + (b_gain_ * v_ref) * (b_gain_ * v_ref));
@@ -107,7 +109,7 @@ VelocityLayout RamseteFollower::step() {
     // Advance time & pose
     time_accum_ += dt_;
     current_pose_.x += v_real * std::cos(current_pose_.theta) * dt_;
-    current_pose_.y += v_real * std::sin(current_pose_.theta) * dt_;
+    current_pose_.y += v_real * std::sin(current_pose_.theta) * dt_;    
     current_pose_.theta = wrapAngle(current_pose_.theta + w_real * dt_);
 
     // Log
