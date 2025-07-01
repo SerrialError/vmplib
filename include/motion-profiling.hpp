@@ -11,6 +11,7 @@ public:
         float maxLinVel,
         float maxLinAccel,
         float decelDist,
+        float timeAccum,
         float startVel,
         float endVel,
         const std::vector<KeyframeVelocities>& keyframes,
@@ -19,7 +20,8 @@ public:
     );
 
     // Advance one timestep. Returns (linear, angular, time)
-    VelocityLayout step();
+    void start();
+    void step();
 
     // True once t ≥ 1.0
     bool isFinished() const;
@@ -27,6 +29,7 @@ public:
     // Access generated path poses & velocities
     const std::vector<Pose>& getPoses() const;
     const std::vector<VelocityLayout>& getVelocities() const;
+    
 
 private:
     // Internal state

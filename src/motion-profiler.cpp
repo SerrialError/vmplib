@@ -46,13 +46,15 @@ void printVels(
     float decelDist = totalLength 
                     - ((std::pow(exitVel, 2.0f) - std::pow(MAX_VELOCITY, 2.0f))
                        / (-2.0f * MAX_ACCEL));
-
+    
+    float timeAccum = .0f;
     // 5) Build and run the trapezoidal profile
     TrapezoidalProfile profiler(
         controlPoints,
         MAX_VELOCITY,
         MAX_ACCEL,
         decelDist,
+	timeAccum,
         initialVel,
         exitVel,
         keyframes,
@@ -60,6 +62,7 @@ void printVels(
         DT
     );
 
+    profiler.start();
     while (!profiler.isFinished()) {
         profiler.step();
     }

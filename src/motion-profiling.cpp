@@ -9,6 +9,7 @@ TrapezoidalProfile::TrapezoidalProfile(
     float maxLinVel,
     float maxLinAccel,
     float decelDist,
+    float timeAccum,
     float startVel,
     float endVel,
     const std::vector<KeyframeVelocities>& keyframes,
@@ -17,7 +18,7 @@ TrapezoidalProfile::TrapezoidalProfile(
 )
     : s_current_(-100.0f),
       prev_t_(0.0f),
-      time_accum_(0.0f),
+      time_accum_(timeAccum),
       cur_speed_(startVel),
       prev_keyframe_idx_(0),
       control_(controlPts),
@@ -106,12 +107,14 @@ float TrapezoidalProfile::computeKeyframeLimit() {
 float TrapezoidalProfile::findNextT(float s0, float deltaS) const {
     return findTForS(control_, s0, deltaS);
 }
+void TrapezoidalProfile::start() {
+    Pose newPose = findXandY(control_, 0.0f);
+    poses_.push_back(newPose);
+    VelocityLayout vlay{ 0.0f, 0.0f, time_accum_ };
+    velocities_.push_back(vlay);
+}
 
-VelocityLayout TrapezoidalProfile::step() {
-    if (isFinished()) {
-        return { 0.0f, 0.0f, time_accum_ };
-    }
-
+void TrapezoidalProfile::step() {
     time_accum_ += dt_;
     s_current_ = sFunction(control_, prev_t_);
 
@@ -139,6 +142,4 @@ VelocityLayout TrapezoidalProfile::step() {
 
     prev_t_    = next_t;
     cur_speed_ = desired_linear;
-
-    return vlay;
 }
