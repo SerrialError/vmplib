@@ -2,8 +2,6 @@
 #include "file-parser.hpp"
 #include "types.hpp"
 #include <vector>
-#include <iostream>
-#include <iomanip>
 #include <string>
 
 int main() {

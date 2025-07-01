@@ -9,8 +9,8 @@
 
 // ----------------------------------------------------------------------------
 // Constants (same values as your original printVels() used)
-constexpr float   MAX_VELOCITY = 1.94503855166f;  // m/s
-constexpr float   MAX_ACCEL    = 6.67663722193f;  // m/s²
+constexpr float   MAX_VELOCITY = 2.12f;  // m/s
+constexpr float   MAX_ACCEL    = 7.778f;  // m/s²
 constexpr float   TRACK_WIDTH  = 0.288925f;       // meters
 constexpr float   RAMSETE_B    = 2.0f;
 constexpr float   RAMSETE_ZETA = 0.7f;

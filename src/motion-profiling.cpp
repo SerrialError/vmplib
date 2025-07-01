@@ -128,7 +128,7 @@ void TrapezoidalProfile::step() {
                                       accel_lim,
                                       keyframe_lim,
                                       max_lin_vel_ });
-    desired_linear = std::max({desired_linear, decel_lim});
+    // desired_linear = std::max({desired_linear, decel_lim});
     float deltaS = desired_linear * dt_;
     float next_t = findNextT(s_current_, deltaS);
 
