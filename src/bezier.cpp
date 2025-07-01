@@ -177,7 +177,7 @@ float curvature(const std::vector<Point>& controlPoints, float t) {
 	// Avoid division by zero
 	if (speedCubed < 1e-6) return 0.0;
 
-	return crossProduct / speedCubed;
+	return fabs(crossProduct) / speedCubed;
 }
 Pose findXandY(const std::vector<Point>& controlPoints, float t) {
 	float x = std::pow(1 - t, 3) * controlPoints[0].x +

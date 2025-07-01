@@ -5,36 +5,27 @@
 
 using namespace MotionUtils;
 
-RamseteFollower::RamseteFollower(float trackWidth,
+RamseteFollower::RamseteFollower(const std::vector<Pose>& refPoses,
+                                 const std::vector<VelocityLayout>& refVels,
+				 float trackWidth,
                                  float bGain,
                                  float zetaGain,
-                                 float dt)
+				 float timeAccum,
+                                 float dt,
+				 bool reverse)
     : track_width_(trackWidth),
       b_gain_(bGain),
       zeta_gain_(zetaGain),
       dt_(dt),
-      reverse_(false),
+      reverse_(reverse),
       current_pose_{0.0f, 0.0f, 0.0f},
-      time_accum_(0.00f),
+      time_accum_(timeAccum),
       index_(0),
-      ref_poses_ptr_(nullptr),
-      ref_vels_ptr_(nullptr)
+      ref_poses_ptr_(&refPoses),
+      ref_vels_ptr_(&refVels)
 {
     executed_poses_.reserve(1000);
     executed_vels_.reserve(1000);
-}
-
-void RamseteFollower::initialize(const std::vector<Pose>& refPoses,
-                                 const std::vector<VelocityLayout>& refVels,
-                                 bool reverse) 
-{
-    ref_poses_ptr_ = &refPoses;
-    ref_vels_ptr_  = &refVels;
-    reverse_       = reverse;
-    index_         = 0;
-    time_accum_    = 0.00f;
-
-    // Start robot at the first reference pose (optionally reversed)
     current_pose_ = refPoses.front();
     std::cout << refVels.front().linear << std::endl;
     if (reverse_) {
@@ -42,8 +33,6 @@ void RamseteFollower::initialize(const std::vector<Pose>& refPoses,
     }
     executed_poses_.clear();
     executed_vels_.clear();
-    // executed_poses_.push_back(current_pose_);
-    // executed_vels_.push_back({ refVels.front().linear, refVels.front().angular, 0.01f });
 }
 
 bool RamseteFollower::isFinished() const {

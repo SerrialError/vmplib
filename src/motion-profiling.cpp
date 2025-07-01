@@ -1,5 +1,6 @@
 #include "motion-profiling.hpp"
 #include <algorithm>
+#include <iostream>
 #include <cmath>
 
 using namespace MotionUtils;
@@ -127,7 +128,7 @@ void TrapezoidalProfile::step() {
                                       accel_lim,
                                       keyframe_lim,
                                       max_lin_vel_ });
-    // float desired_linear = std::max({desired_linear_without_decel, decel_lim});
+    desired_linear = std::max({desired_linear, decel_lim});
     float deltaS = desired_linear * dt_;
     float next_t = findNextT(s_current_, deltaS);
 
@@ -141,5 +142,5 @@ void TrapezoidalProfile::step() {
     velocities_.push_back(vlay);
 
     prev_t_    = next_t;
-    cur_speed_ = desired_linear;
+    cur_speed_ = desired_linear;           
 }

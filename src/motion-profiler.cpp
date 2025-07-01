@@ -77,12 +77,15 @@ void printVels(
 
       // 7) Build & run the RAMSETE follower
       RamseteFollower ramser(
-          TRACK_WIDTH,
+          profiler.getPoses(), 
+	  profiler.getVelocities(),
+	  TRACK_WIDTH,
           RAMSETE_B,
           RAMSETE_ZETA,
-          DT
+	  timeAccum,
+          DT,
+	  false
       );
-      ramser.initialize(profiler.getPoses(), profiler.getVelocities(), /*reverse=*/true);
 
       while (!ramser.isFinished()) {
           ramser.step();

@@ -7,15 +7,14 @@
 
 class RamseteFollower {
 public:
-    RamseteFollower(float trackWidth,
+    RamseteFollower(const std::vector<Pose>& refPoses,
+                    const std::vector<VelocityLayout>& refVels,
+		    float trackWidth,
                     float bGain,
                     float zetaGain,
-                    float dt);
-
-    // Initialize with the reference path + velocities. If reverse is true, flip signs/angles.
-    void initialize(const std::vector<Pose>& refPoses,
-                    const std::vector<VelocityLayout>& refVels,
-                    bool reverse);
+		    float timeAccum,
+                    float dt,
+		    bool reverse);
 
     // Advance one timestep. Returns the new robot Pose & velocity.
     VelocityLayout step();
