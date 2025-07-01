@@ -19,7 +19,6 @@ constexpr float   DT           = 0.01f;           // 10 ms timestep
 using namespace MotionUtils; // for sFunction, curvature, findXandY, findTForS, wrapAngle, sinc
 
 void printVels(
-    const std::string& splineName,
     const std::vector<Point>& controlPoints,
     const std::vector<KeyframeVelocitiesXandY>& keyFrameVelocityInitList,
     bool useKeyFrames
@@ -66,9 +65,9 @@ void printVels(
     }
 
     // 6) Print the open-loop (“nominal”) path:
-    Printer::printPoseVector(    splineName + " X = ",  profiler.getPoses()           );
-    Printer::printVelocityVector(splineName + " L = ",  profiler.getVelocities(), "linear"  );
-    Printer::printVelocityVector(splineName + " A = ",  profiler.getVelocities(), "angular" );
+    Printer::printPoseVector(    "X = ",  profiler.getPoses()           );
+    Printer::printVelocityVector("L = ",  profiler.getVelocities(), "linear"  );
+    Printer::printVelocityVector("A = ",  profiler.getVelocities(), "angular" );
 
     // 7) Build & run the RAMSETE follower in reverse mode (as your old code did)
     RamseteFollower ramser(
@@ -84,7 +83,7 @@ void printVels(
     }
 
     // 8) Print the closed-loop (“RAMSETE‐executed”) path:
-    Printer::printPoseVector(    splineName + " X_r = ",  ramser.getExecutedPoses()           );
-    Printer::printVelocityVector(splineName + " L_r = ",  ramser.getExecutedVelocities(), "linear"  );
-    Printer::printVelocityVector(splineName + " A_r = ",  ramser.getExecutedVelocities(), "angular" );
+    Printer::printPoseVector(    "X_r = ",  ramser.getExecutedPoses()           );
+    Printer::printVelocityVector("L_r = ",  ramser.getExecutedVelocities(), "linear"  );
+    Printer::printVelocityVector("A_r = ",  ramser.getExecutedVelocities(), "angular" );
 }

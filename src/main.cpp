@@ -14,7 +14,7 @@ int main() {
 		{ -1.773, -1.01 }, 
 		{ -0.42, -1.212 }};
 	keyFrameVelocityList = {{0,0,0}};
-	printVels(splineName, controlPoints, keyFrameVelocityList, false);
+	printVels(controlPoints, keyFrameVelocityList, false);
 
 	return(0);
 }

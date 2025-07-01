@@ -26,9 +26,8 @@ convertToTFrame(
 //  5) print the closed-loop poses & velocities.
 //
 // Example usage remains unchanged:
-//   printVels("spline1", controlPoints, keyFrameVelocityList, false);
+//   printVels(controlPoints, keyFrameVelocityList, false);
 void printVels(
-    const std::string& splineName,
     const std::vector<Point>& controlPoints,
     const std::vector<KeyframeVelocitiesXandY>& keyFrameVelocityInitList,
     bool useKeyFrames
