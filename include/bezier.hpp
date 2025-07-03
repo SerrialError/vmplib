@@ -24,4 +24,5 @@ std::vector<KeyframeVelocities> convertToTFrame(
     const std::vector<KeyframeVelocitiesXandY>& keyFrameVelocitiesXY
 );
 
-float curvature(const std::vector<Point>& controlPoints, float t);
+float signedCurvature(const std::vector<Point>& controlPoints, float t);
+float unsignedCurvature(const std::vector<Point>& controlPoints, float t);

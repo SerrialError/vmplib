@@ -11,7 +11,8 @@ namespace MotionUtils {
     float sFunction(const std::vector<Point>& controlPts, float t);
 
     // Returns curvature of the spline at parameter t
-    float curvature(const std::vector<Point>& controlPts, float t);
+    float unsignedCurvature(const std::vector<Point>& controlPts, float t);
+    float signedCurvature(const std::vector<Point>& controlPts, float t);
 
     // Returns the (x,y,θ) Pose on the spline at parameter t
     Pose findXandY(const std::vector<Point>& controlPts, float t);

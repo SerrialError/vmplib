@@ -163,8 +163,25 @@ std::vector<KeyframeVelocities> convertToTFrame(
 	}
 	return keyFrameVelocitiesT;
 }
-// Compute curvature Îº(t)
-float curvature(const std::vector<Point>& controlPoints, float t) {
+// Compute signed curvature Îº(t)
+float signedCurvature(const std::vector<Point>& controlPoints, float t) {
+	Point r1 = bezierDerivative(controlPoints, t);
+	Point r2 = bezierSecondDerivative(controlPoints, t);
+
+	// Compute cross product magnitude for 2D case (determinant form)
+	float crossProduct = (r1.x * r2.y - r1.y * r2.x);
+
+	// Compute denominator |r'(t)|^3
+	float speedCubed = std::pow(std::sqrt(r1.x * r1.x + r1.y * r1.y), 3);
+
+	// Avoid division by zero
+	if (speedCubed < 1e-6) return 0.0;
+
+	return crossProduct / speedCubed;
+}
+
+// Compute unsigned curvature Îº(t)
+float unsignedCurvature(const std::vector<Point>& controlPoints, float t) {
 	Point r1 = bezierDerivative(controlPoints, t);
 	Point r2 = bezierSecondDerivative(controlPoints, t);
 
@@ -179,6 +196,7 @@ float curvature(const std::vector<Point>& controlPoints, float t) {
 
 	return fabs(crossProduct) / speedCubed;
 }
+
 Pose findXandY(const std::vector<Point>& controlPoints, float t) {
 	float x = std::pow(1 - t, 3) * controlPoints[0].x +
 		3 * std::pow(1 - t, 2) * t * controlPoints[1].x +

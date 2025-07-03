@@ -8,8 +8,11 @@ namespace MotionUtils {
         return ::sFunction(controlPts, t);
     }
 
-    float curvature(const std::vector<Point>& controlPts, float t) {
-        return ::curvature(controlPts, t);
+    float unsignedCurvature(const std::vector<Point>& controlPts, float t) {
+        return ::unsignedCurvature(controlPts, t);
+    }
+    float signedCurvature(const std::vector<Point>& controlPts, float t) {
+        return ::signedCurvature(controlPts, t);
     }
 
     Pose findXandY(const std::vector<Point>& controlPts, float t) {

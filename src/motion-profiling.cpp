@@ -49,7 +49,7 @@ const std::vector<VelocityLayout>& TrapezoidalProfile::getVelocities() const {
 
 float TrapezoidalProfile::computeCurvatureVelocityLimit(float t) const {
     const float trackWidth = 0.288925f;
-    float curv = curvature(control_, t);
+    float curv = unsignedCurvature(control_, t);
     if (std::abs(curv) < 1e-6f) {
         return max_lin_vel_;
     }
@@ -131,7 +131,7 @@ void TrapezoidalProfile::step() {
     float deltaS = desired_linear * dt_;
     float next_t = findNextT(s_current_, deltaS);
 
-    float kappa = curvature(control_, next_t);
+    float kappa = signedCurvature(control_, next_t);
     float turning_component = kappa * desired_linear;
 
     Pose newPose = findXandY(control_, next_t);
