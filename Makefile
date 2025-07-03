@@ -14,13 +14,13 @@ SRCS := $(wildcard $(SRCDIR)/*.cpp)
 # Turn “src/foo.cpp” into “obj/foo.o”
 OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 
-# Final executable
+# Final executable (with .exe suffix)
 EXE := $(BINDIR)/main
 
 # Default target: make sure bins + objs exist, then build the exe
 all: $(BINDIR) $(OBJDIR) $(EXE)
 
-# Link step: link all .o files into bin/main
+# Link step: link all .o files into bin/main.exe
 $(EXE): $(OBJS)
 	$(CXX) $^ -o $@
 
