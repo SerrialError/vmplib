@@ -1,6 +1,5 @@
 #include "motion-profiling.hpp"
 #include <algorithm>
-#include <iostream>
 #include <cmath>
 
 using namespace MotionUtils;
