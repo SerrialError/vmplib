@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+
 void loadPaths(
     const std::string& filename,
     std::vector<std::vector<Point>>& controlPoints,
@@ -13,10 +14,26 @@ void loadPaths(
         return;
     }
 
-    const std::string marker = "#SPLINE-POINTS-START";
-    std::string line;
+    enum class State { None, ReadingPoints, ReadingVels };
+    State state = State::None;
 
-    std::vector<Point> currentPoints;
+    std::string line;
+    std::vector<Point>    currentPoints;
+    std::vector<KeyframeVelocitiesXandY> currentVels;
+
+    auto pushBlock = [&]() {
+        if (!currentPoints.empty()) {
+            controlPoints.push_back(currentPoints);
+            currentPoints.clear();
+            // if no velocities were specified, push one default
+            if (currentVels.empty()) {
+                keyFrameVelocityList.emplace_back(1, KeyframeVelocitiesXandY{0.f,0.f,0.f});
+            } else {
+                keyFrameVelocityList.push_back(currentVels);
+            }
+            currentVels.clear();
+        }
+    };
 
     while (std::getline(infile, line)) {
         // trim leading whitespace
@@ -24,29 +41,60 @@ void loadPaths(
         if (first == std::string::npos) continue;
         line = line.substr(first);
 
-        // start new block
-        if (line.rfind(marker, 0) == 0) {
-            if (!currentPoints.empty()) {
-                controlPoints.push_back(currentPoints);
-                // one default keyframe per path
-                keyFrameVelocityList.emplace_back(1, KeyframeVelocitiesXandY{0.f, 0.f, 0.f});
-                currentPoints.clear();
+        if (line.rfind("#PATH-START", 0) == 0) {
+            // if we were mid‑block, push it
+            if (state == State::ReadingVels) {
+                pushBlock();
             }
+            state = State::None;
+            continue;
+        }
+        if (line.rfind("#PATH.JERRYIO-DATA", 0) == 0) {
+            // if we were mid‑block, push it
+            if (state == State::ReadingVels) {
+                pushBlock();
+            }
+            state = State::None;
+            continue;
+        }
+        if (line.rfind("#POINTS-START", 0) == 0) {
+            // if we just finished a velocities block, push it before starting a new one
+            if (state == State::ReadingVels) {
+                pushBlock();
+            }
+            currentPoints.clear();
+            state = State::ReadingPoints;
+            continue;
+        }
+        if (line.rfind("#VELOCITIES-START", 0) == 0) {
+            state = State::ReadingVels;
+            currentVels.clear();
             continue;
         }
 
-        // parse "x, y, z"
         std::istringstream iss(line);
-        float x, y, z;
-        char c1, c2;
-        if (iss >> x >> c1 >> y >> c2 >> z && c1 == ',' && c2 == ',') {
-            currentPoints.push_back(Point{x, y});
+        if (state == State::ReadingPoints) {
+            float x, y;
+            char comma;
+            if (iss >> x >> comma >> y && comma == ',') {
+                currentPoints.push_back(Point{x, y});
+            } else {
+                std::cerr << "Warning: failed to parse point line: " << line << "\n";
+            }
+        }
+        else if (state == State::ReadingVels) {
+            float vx, vy, vz;
+            char c1, c2;
+            if (iss >> vx >> c1 >> vy >> c2 >> vz && c1 == ',' && c2 == ',') {
+                currentVels.push_back(KeyframeVelocitiesXandY{vx, vy, vz});
+            } else {
+                std::cerr << "Warning: failed to parse velocity line: " << line << "\n";
+            }
         }
     }
 
-    // push last block if any
-    if (!currentPoints.empty()) {
-        controlPoints.push_back(currentPoints);
-        keyFrameVelocityList.emplace_back(1, KeyframeVelocitiesXandY{0.f, 0.f, 0.f});
+    // at EOF, if we were mid‑block, push it
+    if (state == State::ReadingVels) {
+        pushBlock();
     }
 }
