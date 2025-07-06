@@ -26,6 +26,6 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         loadPaths(filename, controlPoints, keyFrameVelocityList);
-	printVels(controlPoints, keyFrameVelocityList, false);
+	printVels(controlPoints, keyFrameVelocityList, true);
 	return(0);
 }
