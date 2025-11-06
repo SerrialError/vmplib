@@ -17,6 +17,7 @@ constexpr float   TRACK_WIDTH  = 0.29508135f;       // meters
 constexpr float   RAMSETE_B    = 2.0f;
 constexpr float   RAMSETE_ZETA = 0.7f;
 constexpr float   DT           = 0.01f;           // 10 ms timestep
+bool testing = true;
 
 using namespace MotionUtils; // for sFunction, curvature, findXandY, findTForS, wrapAngle, sinc
 
@@ -43,6 +44,12 @@ void printVels(
       float initialVel = (useKeyFrames && !keyframes.empty())
                        ? keyframes.front().velocity
                        : 0.0f;
+	  // Velocities is std::vector<std::vector<VelocityLayout>>
+	  if (!Velocities.empty() && !Velocities.back().empty()) {
+    	// reference to last inner vector
+    	auto &lastInner = Velocities.back();
+    	initialVel = lastInner.back().linear;
+	  }
       float exitVel = (useKeyFrames && !keyframes.empty())
                     ? keyframes.back().velocity
                     : 0.0f;
@@ -50,7 +57,7 @@ void printVels(
       // 3) Compute total spline length = sFunction(…, t=1)
       float totalLength = sFunction(controlPoints[i], 1.0f);
 
-      // 4) Compute deceleration distance exactly as in your original code:
+      // 4) Compute deceleration distance:
       //    decelDist = totalLength − [ (exitVel² − maxVel²) / (−2·maxAccel) ]
       float decelDist = totalLength 
                     - ((std::pow(exitVel, 2.0f) - std::pow(MAX_VELOCITY, 2.0f))
@@ -62,7 +69,7 @@ void printVels(
           MAX_VELOCITY,
           MAX_ACCEL,
           decelDist,
-	  timeAccum,
+	  	  timeAccum,
           initialVel,
           exitVel,
           keyframes,
@@ -80,13 +87,13 @@ void printVels(
       // 7) Build & run the RAMSETE follower
       RamseteFollower ramser(
           profiler.getPoses(), 
-	  profiler.getVelocities(),
-	  TRACK_WIDTH,
+	  	  profiler.getVelocities(),
+	  	  TRACK_WIDTH,
           RAMSETE_B,
           RAMSETE_ZETA,
-	  timeAccum,
+	  	  timeAccum,
           DT,
-	  false
+	  	  false
       );
 
       while (!ramser.isFinished()) {
@@ -97,12 +104,20 @@ void printVels(
       RamseteVelocities.push_back(ramser.getExecutedVelocities());
       timeAccum = profiler.getVelocities()[profiler.getVelocities().size() - 1].time;
     }
-    // 6) Print the open-loop (“nominal”) path:
-    Printer::printPoseVector(    "X = ",  Poses           );
-    Printer::printVelocityVector("L = ",  Velocities, "linear"  );
-    Printer::printVelocityVector("A = ",  Velocities, "angular" );
-    // 8) Print the closed-loop (“RAMSETE‐executed”) path:
-    Printer::printPoseVector(    "X_r = ",  RamsetePoses           );
-    Printer::printVelocityVector("L_r = ",  RamseteVelocities, "linear"  );     Printer::printVelocityVector("A_r = ",  RamseteVelocities, "angular" );
+	if (testing) {
+		// 6) Print the open-loop (“nominal”) path:
+		Printer::printPoseVectorDesmos(    "X = ",  Poses           );
+		Printer::printVelocityVectorDesmos("L = ",  Velocities, "linear"  );
+		Printer::printVelocityVectorDesmos("A = ",  Velocities, "angular" );
+		// 8) Print the closed-loop (“RAMSETE‐executed”) path:
+		Printer::printPoseVectorDesmos(    "X_r = ",  RamsetePoses           );
+		Printer::printVelocityVectorDesmos("L_r = ",  RamseteVelocities, "linear"  );     
+		Printer::printVelocityVectorDesmos("A_r = ",  RamseteVelocities, "angular" );
+	}
+	else {
+		// 6) Print the open-loop (“nominal”) path:
+		Printer::printPoseVectorCode(    "P =",  Poses           );
+		Printer::printVelocityVectorCode("V =",  Velocities);
+	}
 
 }
