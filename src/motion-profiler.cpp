@@ -9,9 +9,11 @@
 
 // ----------------------------------------------------------------------------
 // Constants (same values as your original printVels() used)
-constexpr float   MAX_VELOCITY = 2.12f;  // m/s
-constexpr float   MAX_ACCEL    = 7.778f;  // m/s²
-constexpr float   TRACK_WIDTH  = 0.288925f;       // meters
+constexpr float   MAX_VELOCITY = 1.8885160604f;  // m/s
+// (min of 75.858991, 74.351026, 80.215332, 76.235982, 75.314448, 78.351321) * 1 * 0.0254 
+constexpr float   MAX_ACCEL    = 4.12203073382f;  // m/s²
+// (min of 1321.05645016, 1725.94898788, 5072.71894467, 3516.54633835, 1360.24316837, 5810.0992236) * 1 * 0.0254 = 3.5548338341 NOT REALISTIC SO 5.15253841728 * 0.8 = 4.12203073382
+constexpr float   TRACK_WIDTH  = 0.29508135f;       // meters
 constexpr float   RAMSETE_B    = 2.0f;
 constexpr float   RAMSETE_ZETA = 0.7f;
 constexpr float   DT           = 0.01f;           // 10 ms timestep

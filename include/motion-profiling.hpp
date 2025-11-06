@@ -45,7 +45,7 @@ private:
     float max_lin_accel_;
     float decel_distance_;
     float exit_velocity_;
-    float initial_velocity_;       // <-- new member to store the start velocity
+    float initial_velocity_;
     bool use_keyframes_;
     float dt_;
     std::vector<KeyframeVelocities> keyframes_;
