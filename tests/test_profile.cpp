@@ -10,6 +10,7 @@ namespace {
 
 constexpr float kMaxVel = 1.8885160604f;
 constexpr float kMaxAccel = 4.12203073382f;
+constexpr float kTrackWidth = 0.29508135f;
 constexpr float kDt = 0.01f;
 
 // A gentle S-curve roughly 1.4 m long.
@@ -25,7 +26,8 @@ const std::vector<Point> kHairpin = {
     {0.f, 0.f}, {1.2f, 0.f}, {1.2f, 0.25f}, {0.f, 0.25f}};
 
 TrapezoidalProfile makeProfile(const std::vector<Point>& pts, float startVel, float endVel) {
-    return TrapezoidalProfile(pts, kMaxVel, kMaxAccel, 0.0f, startVel, endVel, {}, false, kDt);
+    return TrapezoidalProfile(pts, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, startVel, endVel, {},
+                              false, kDt);
 }
 
 // Steps the profile with a hard cap so a non-terminating profile fails rather
@@ -161,7 +163,7 @@ TEST_CASE("ramsete reproduces the reference when it starts on it") {
     TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
-    RamseteFollower follower(profile.getPoses(), profile.getVelocities(), 0.29508135f, 2.0f,
+    RamseteFollower follower(profile.getPoses(), profile.getVelocities(), kTrackWidth, 2.0f,
                              0.7f, 0.0f, kDt, false);
 
     int steps = 0;

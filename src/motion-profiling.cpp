@@ -8,6 +8,7 @@ TrapezoidalProfile::TrapezoidalProfile(
     const std::vector<Point>& controlPts,
     float maxLinVel,
     float maxLinAccel,
+    float trackWidth,
     float timeAccum,
     float startVel,
     float endVel,
@@ -24,6 +25,7 @@ TrapezoidalProfile::TrapezoidalProfile(
       control_(controlPts),
       max_lin_vel_(maxLinVel),
       max_lin_accel_(maxLinAccel),
+      track_width_(trackWidth),
       exit_velocity_(endVel),
       use_keyframes_(useKeyframes),
       dt_(dt),
@@ -48,13 +50,12 @@ const std::vector<VelocityLayout>& TrapezoidalProfile::getVelocities() const {
 }
 
 float TrapezoidalProfile::computeCurvatureVelocityLimit(float t) const {
-    const float trackWidth = 0.288925f;
     float curv = unsignedCurvature(control_, t);
     if (std::abs(curv) < 1e-6f) {
         return max_lin_vel_;
     }
     float turn_radius = 1.0f / curv;
-    return max_lin_vel_ * turn_radius / (turn_radius + trackWidth / 2.0f);
+    return max_lin_vel_ * turn_radius / (turn_radius + track_width_ / 2.0f);
 }
 
 // Speed reachable in one timestep given the acceleration limit.

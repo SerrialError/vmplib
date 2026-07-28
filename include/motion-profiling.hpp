@@ -10,6 +10,7 @@ public:
         const std::vector<Point>& controlPts,
         float maxLinVel,
         float maxLinAccel,
+        float trackWidth,
         float timeAccum,
         float startVel,
         float endVel,
@@ -43,6 +44,7 @@ private:
     const std::vector<Point>& control_;
     float max_lin_vel_;
     float max_lin_accel_;
+    float track_width_;
     float exit_velocity_;
     bool use_keyframes_;
     float dt_;

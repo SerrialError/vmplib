@@ -60,6 +60,7 @@ void printVels(
           controlPoints[i],
           MAX_VELOCITY,
           MAX_ACCEL,
+          TRACK_WIDTH,
 	  	  timeAccum,
           initialVel,
           exitVel,
