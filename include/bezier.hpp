@@ -17,10 +17,13 @@ float sFunction(const std::vector<Point>& controlPoints, float t);
 float findTForS(const std::vector<Point>& controlPoints, float sCurrent, float deltaS,
                 float tGuess = 0.5f);
 
-float bezierComponent(const std::vector<Point>& controlPoints, float t, bool useX);
-bool tryNewtonRaphson(const std::vector<Point>& controlPoints, float target, bool useX, float& t);
-float findTForComponent(const std::vector<Point>& controlPoints, float target, bool useX, float prevT = 0.5f);
 Pose findXandY(const std::vector<Point>& controlPoints, float t);
+
+// Returns the t minimising ||r(t) - (x, y)||. If residual is non-null it
+// receives the distance from the curve to (x, y), which is how a caller tells
+// an on-path point from one that merely projects somewhere.
+float projectOntoCurve(const std::vector<Point>& controlPoints, float x, float y,
+                       float* residual = nullptr);
 
 std::vector<KeyframeVelocities> convertToTFrame(
     const std::vector<Point>& bezierPoints,
