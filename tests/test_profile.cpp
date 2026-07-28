@@ -137,7 +137,10 @@ TEST_CASE("braking limit keeps the profile stoppable at every point") {
 
         const float remaining = std::max(0.f, total - travelled);
         const float stoppable = std::sqrt(2.0f * kMaxAccel * remaining);
-        CHECK(vels[i].linear <= stoppable + 0.05f);
+        // Same 2*a*dt discretization floor as the exit-velocity test: the
+        // sample is taken before the step it commands, so the last few
+        // samples sit one step's worth of travel above the ideal ramp.
+        CHECK(vels[i].linear <= stoppable + 2.0f * kMaxAccel * kDt);
     }
 }
 

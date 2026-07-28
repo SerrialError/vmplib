@@ -108,7 +108,9 @@ float TrapezoidalProfile::computeKeyframeLimit() {
 }
 
 float TrapezoidalProfile::findNextT(float s0, float deltaS) const {
-    return findTForS(control_, s0, deltaS);
+    // The answer is within one timestep of the current parameter, so seed the
+    // solver there rather than restarting from mid-curve every step.
+    return findTForS(control_, s0, deltaS, prev_t_);
 }
 void TrapezoidalProfile::start() {
     Pose newPose = findXandY(control_, 0.0f);
