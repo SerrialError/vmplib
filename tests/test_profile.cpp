@@ -141,6 +141,78 @@ TEST_CASE("braking limit keeps the profile stoppable at every point") {
     }
 }
 
+// --- Keyframes -------------------------------------------------------------
+
+TEST_CASE("keyframes cap velocity at the requested arc positions") {
+    // Slow to 0.3 m/s halfway along the path, then release back to full speed.
+    const std::vector<KeyframeVelocities> keyframes = {
+        {kMaxVel, 0.0f}, {0.3f, 0.5f}, {kMaxVel, 1.0f}};
+
+    TrapezoidalProfile profile(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.0f,
+                               keyframes, true, kDt);
+    REQUIRE(runToCompletion(profile));
+
+    const float total = sFunction(kLongPath, 1.0f);
+    const float sMid = sFunction(kLongPath, 0.5f);
+
+    const auto& poses = profile.getPoses();
+    const auto& vels = profile.getVelocities();
+
+    float travelled = 0.f;
+    float velNearMid = -1.f;
+    for (size_t i = 1; i < poses.size(); ++i) {
+        const float dx = poses[i].x - poses[i - 1].x;
+        const float dy = poses[i].y - poses[i - 1].y;
+        travelled += std::sqrt(dx * dx + dy * dy);
+        if (velNearMid < 0.f && travelled >= sMid) {
+            velNearMid = vels[i].linear;
+        }
+    }
+
+    REQUIRE(total > 0.f);
+    REQUIRE(velNearMid >= 0.f);
+    // At the midpoint keyframe the cap is 0.3 m/s.
+    CHECK(velNearMid <= 0.3f + 0.05f);
+}
+
+TEST_CASE("keyframe limit interpolates between the bracketing pair") {
+    // Two intervals with different endpoints. If the interpolation measured
+    // from the path start instead of from the preceding keyframe, the second
+    // interval would be capped far too low.
+    const std::vector<KeyframeVelocities> keyframes = {
+        {0.2f, 0.0f}, {0.2f, 0.5f}, {kMaxVel, 1.0f}};
+
+    TrapezoidalProfile profile(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.0f,
+                               keyframes, true, kDt);
+    REQUIRE(runToCompletion(profile));
+
+    const auto& vels = profile.getVelocities();
+    // The final interval ramps up to kMaxVel, so the profile must exceed the
+    // 0.2 m/s plateau well before the end.
+    const float peak = std::max_element(vels.begin(), vels.end(),
+                                        [](const VelocityLayout& a, const VelocityLayout& b) {
+                                            return a.linear < b.linear;
+                                        })
+                           ->linear;
+    CHECK(peak > 0.4f);
+}
+
+TEST_CASE("keyframes are indexed by arc length, not elapsed time") {
+    // A keyframe at t=0.9 must still be capping velocity after more than one
+    // second of travel. The old code compared the parameter against
+    // time_accum_, so every keyframe was skipped within the first second.
+    const std::vector<KeyframeVelocities> keyframes = {
+        {kMaxVel, 0.0f}, {kMaxVel, 0.85f}, {0.25f, 1.0f}};
+
+    TrapezoidalProfile profile(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.25f,
+                               keyframes, true, kDt);
+    REQUIRE(runToCompletion(profile));
+
+    const auto& vels = profile.getVelocities();
+    REQUIRE(vels.back().time > 1.0f);
+    CHECK(vels.back().linear <= 0.25f + 0.1f);
+}
+
 // --- Known-failing: documents bugs fixed in later PRs ----------------------
 
 TEST_CASE("commanded velocity respects the acceleration limit" * doctest::should_fail()) {

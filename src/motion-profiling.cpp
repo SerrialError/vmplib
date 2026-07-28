@@ -1,6 +1,7 @@
 #include "motion-profiling.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 using namespace MotionUtils;
 
@@ -75,28 +76,35 @@ float TrapezoidalProfile::computeBrakingLimit(float s) const {
 }
 
 float TrapezoidalProfile::computeKeyframeLimit() {
-    if (!use_keyframes_ || prev_keyframe_idx_ + 1 >= keyframes_.size()) {
+    if (!use_keyframes_ || keyframes_.size() < 2) {
         return std::numeric_limits<float>::infinity();
+    }
+
+    const float s_now = sFunction(control_, prev_t_);
+
+    // Advance past every keyframe the robot has already driven through.
+    while (prev_keyframe_idx_ + 2 < keyframes_.size() &&
+           s_now >= sFunction(control_, keyframes_[prev_keyframe_idx_ + 1].t)) {
+        ++prev_keyframe_idx_;
     }
 
     const auto& kf0 = keyframes_[prev_keyframe_idx_];
     const auto& kf1 = keyframes_[prev_keyframe_idx_ + 1];
 
-    if (kf1.time < time_accum_) {
-        ++prev_keyframe_idx_;
-    }
-
-    float vi2 = kf0.velocity * kf0.velocity;
-    float vf2 = kf1.velocity * kf1.velocity;
-    float s_now = sFunction(control_, prev_t_);
-    float s_kf1 = sFunction(control_, kf1.time);
-
-    if (s_kf1 <= 0.0f) {
+    const float s0 = sFunction(control_, kf0.t);
+    const float s1 = sFunction(control_, kf1.t);
+    const float span = s1 - s0;
+    if (span <= 0.0f) {
         return kf1.velocity;
     }
-    float ratio = s_now / s_kf1;
-    float vel_lim_sq = vi2 + (vf2 - vi2) * ratio;
-    return (vel_lim_sq > 0.0f ? std::sqrt(vel_lim_sq) : kf1.velocity);
+
+    // Interpolate in v^2, which makes each keyframe interval a constant
+    // acceleration segment: v^2 = v0^2 + 2*a*(s - s0).
+    const float lambda = std::clamp((s_now - s0) / span, 0.0f, 1.0f);
+    const float v0sq = kf0.velocity * kf0.velocity;
+    const float v1sq = kf1.velocity * kf1.velocity;
+    const float vsq = v0sq + (v1sq - v0sq) * lambda;
+    return vsq > 0.0f ? std::sqrt(vsq) : 0.0f;
 }
 
 float TrapezoidalProfile::findNextT(float s0, float deltaS) const {
