@@ -11,7 +11,8 @@ RamseteFollower::RamseteFollower(const std::vector<Pose>& refPoses,
                                  float zetaGain,
 				 float timeAccum,
                                  float dt,
-				 bool reverse)
+				 bool reverse,
+				 std::optional<Pose> initialPose)
     : track_width_(trackWidth),
       b_gain_(bGain),
       zeta_gain_(zetaGain),
@@ -25,7 +26,7 @@ RamseteFollower::RamseteFollower(const std::vector<Pose>& refPoses,
 {
     executed_poses_.reserve(1000);
     executed_vels_.reserve(1000);
-    current_pose_ = refPoses.front();
+    current_pose_ = initialPose.value_or(refPoses.front());
     if (reverse_) {
         current_pose_.theta = wrapAngle(current_pose_.theta + static_cast<float>(M_PI));
     }
@@ -80,23 +81,17 @@ VelocityLayout RamseteFollower::step() {
     float error_x =  sin_t * dy + cos_t * dx;
     float error_y =  cos_t * dy - sin_t * dx;
 
-    // Gains
-    float k2 = std::sqrt(w_ref * w_ref + (b_gain_ * v_ref) * (b_gain_ * v_ref));
+    // k = 2*zeta*sqrt(w_ref^2 + b*v_ref^2), with b in 1/m^2 so that k is 1/s.
+    float k = 2.0f * zeta_gain_ * std::sqrt(w_ref * w_ref + b_gain_ * v_ref * v_ref);
 
-    // Compute control outputs
-    float linear_out  = v_ref * std::cos(error_theta) + b_gain_ * error_x;
-    float angular_out = w_ref + k2 * sinc(error_theta) * error_y + b_gain_ * error_theta;
-
-    // Convert to wheel velocities, then back to (v,w)
-    float leftVel  = linear_out - (angular_out * track_width_ / 2.0f);
-    float rightVel = linear_out + (angular_out * track_width_ / 2.0f);
-    float v_real = (leftVel + rightVel) / 2.0f;
-    float w_real = (rightVel - leftVel) / track_width_;
+    float v_real = v_ref * std::cos(error_theta) + k * error_x;
+    float w_real = w_ref + k * error_theta
+                 + b_gain_ * v_ref * sinc(error_theta) * error_y;
 
     // Advance time & pose
     time_accum_ += dt_;
     current_pose_.x += v_real * std::cos(current_pose_.theta) * dt_;
-    current_pose_.y += v_real * std::sin(current_pose_.theta) * dt_;    
+    current_pose_.y += v_real * std::sin(current_pose_.theta) * dt_;
     current_pose_.theta = wrapAngle(current_pose_.theta + w_real * dt_);
 
     // Log

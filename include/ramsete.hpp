@@ -1,12 +1,16 @@
 // ramsete.hpp
 #pragma once
 
+#include <optional>
 #include <vector>
 #include "types.hpp"
 #include "motion-utils.hpp"
 
 class RamseteFollower {
 public:
+    // bGain > 0 and zetaGain in (0, 1) per the RAMSETE stability conditions.
+    // initialPose defaults to the first reference pose; pass a different one to
+    // start the robot off the path.
     RamseteFollower(const std::vector<Pose>& refPoses,
                     const std::vector<VelocityLayout>& refVels,
 		    float trackWidth,
@@ -14,7 +18,8 @@ public:
                     float zetaGain,
 		    float timeAccum,
                     float dt,
-		    bool reverse);
+		    bool reverse,
+		    std::optional<Pose> initialPose = std::nullopt);
 
     // Advance one timestep. Returns the new robot Pose & velocity.
     VelocityLayout step();

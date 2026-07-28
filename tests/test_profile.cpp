@@ -252,3 +252,40 @@ TEST_CASE("ramsete reproduces the reference when it starts on it") {
     CHECK(finalPose.x == doctest::Approx(refPose.x).epsilon(0.05));
     CHECK(finalPose.y == doctest::Approx(refPose.y).epsilon(0.05));
 }
+
+TEST_CASE("ramsete converges from an initial pose offset") {
+    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    REQUIRE(runToCompletion(profile));
+
+    const auto& refPoses = profile.getPoses();
+    Pose offset = refPoses.front();
+    offset.x += 0.10f;
+    offset.y -= 0.10f;
+    offset.theta += 0.25f;
+
+    RamseteFollower follower(refPoses, profile.getVelocities(), kTrackWidth, 2.0f, 0.7f, 0.0f,
+                             kDt, false, offset);
+
+    const float initialError = std::sqrt(0.10f * 0.10f + 0.10f * 0.10f);
+
+    std::vector<float> errors;
+    size_t i = 0;
+    int steps = 0;
+    while (!follower.isFinished() && steps < kStepCap) {
+        follower.step();
+        const Pose actual = follower.getCurrentPose();
+        const Pose ref = refPoses[i];
+        errors.push_back(std::sqrt((actual.x - ref.x) * (actual.x - ref.x) +
+                                   (actual.y - ref.y) * (actual.y - ref.y)));
+        ++i;
+        ++steps;
+    }
+    REQUIRE(errors.size() > 50);
+
+    // The controller must actually pull the robot back onto the path.
+    CHECK(errors.back() < initialError * 0.25f);
+
+    // And it must not diverge on the way there.
+    const float peak = *std::max_element(errors.begin(), errors.end());
+    CHECK(peak <= initialError * 1.5f);
+}
