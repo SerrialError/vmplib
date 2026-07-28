@@ -18,8 +18,8 @@ SRCS := $(wildcard $(SRCDIR)/*.cpp)
 OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 
 # Core numerics the tests link against; excludes main, I/O and printing.
-TEST_LIB_SRCS := $(SRCDIR)/bezier.cpp $(SRCDIR)/motion-utils.cpp \
-                 $(SRCDIR)/motion-profiling.cpp $(SRCDIR)/ramsete.cpp
+TEST_LIB_SRCS := $(SRCDIR)/bezier.cpp $(SRCDIR)/motion-profiling.cpp \
+                 $(SRCDIR)/ramsete.cpp
 TEST_LIB_OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(TEST_LIB_SRCS))
 
 TEST_SRCS := $(wildcard $(TESTDIR)/*.cpp)
