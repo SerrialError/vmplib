@@ -3,6 +3,9 @@
 /obj/
 /*.o
 
+# --- Generated output ---
+output.txt
+
 # --- Nix ---
 result            # flake result link
 *.drv             # Nix derivations
