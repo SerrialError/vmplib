@@ -121,13 +121,15 @@ void TrapezoidalProfile::step() {
     float keyframe_lim  = computeKeyframeLimit();
     float curvature_lim = computeCurvatureVelocityLimit(prev_t_);
     float accel_lim     = computeAccelerationLimit(s_current_);
-    float decel_lim     = computeDecelerationLimit(s_current_);
 
+    // These bound how fast the speed may rise, but nothing bounds how fast it
+    // may fall: a curvature spike still produces a step change that exceeds
+    // max_lin_accel_. Fixing that needs a backward pass over the whole path,
+    // not a per-step clamp. See the "acceleration limit" test.
     float desired_linear = std::min({ curvature_lim,
                                       accel_lim,
                                       keyframe_lim,
                                       max_lin_vel_ });
-    // desired_linear = std::max({desired_linear, decel_lim});
     float deltaS = desired_linear * dt_;
     float next_t = findNextT(s_current_, deltaS);
 
