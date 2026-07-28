@@ -163,38 +163,47 @@ std::vector<KeyframeVelocities> convertToTFrame(
 	}
 	return keyFrameVelocitiesT;
 }
-// Compute signed curvature Îº(t)
-float signedCurvature(const std::vector<Point>& controlPoints, float t) {
-	Point r1 = bezierDerivative(controlPoints, t);
-	Point r2 = bezierSecondDerivative(controlPoints, t);
+// Curvature returned where |r'(t)| collapses. A cusp has infinite curvature,
+// so saturating high is the safe direction: the curvature speed limit
+// v_max * R/(R + w/2) then drives the commanded speed toward zero. Returning
+// zero instead would remove the speed limit at the sharpest point on the path.
+// The resulting angular velocity tends to 2*v_max/w, i.e. turning in place at
+// the drivetrain's maximum rate, which is the correct physical limit.
+static constexpr float kDegenerateCurvature = 1.0e4f;
 
-	// Compute cross product magnitude for 2D case (determinant form)
-	float crossProduct = (r1.x * r2.y - r1.y * r2.x);
+// Curvature magnitude and sign share a denominator; compute once.
+static float curvatureImpl(const std::vector<Point>& controlPoints, float t, bool signedResult) {
+	const Point r1 = bezierDerivative(controlPoints, t);
+	const Point r2 = bezierSecondDerivative(controlPoints, t);
 
-	// Compute denominator |r'(t)|^3
-	float speedCubed = std::pow(std::sqrt(r1.x * r1.x + r1.y * r1.y), 3);
+	// 2D cross product (determinant form)
+	const float crossProduct = r1.x * r2.y - r1.y * r2.x;
 
-	// Avoid division by zero
-	if (speedCubed < 1e-6) return 0.0;
+	// |r'(t)|^3, computed without a pow() round trip
+	const float speedSquared = r1.x * r1.x + r1.y * r1.y;
+	const float speedCubed = speedSquared * std::sqrt(speedSquared);
 
-	return crossProduct / speedCubed;
+	if (speedCubed < 1e-12f) {
+		if (!signedResult) {
+			return kDegenerateCurvature;
+		}
+		// Preserve turn direction where it is still recoverable.
+		return crossProduct < 0.0f ? -kDegenerateCurvature : kDegenerateCurvature;
+	}
+
+	const float kappa = crossProduct / speedCubed;
+	const float clamped = std::clamp(kappa, -kDegenerateCurvature, kDegenerateCurvature);
+	return signedResult ? clamped : std::fabs(clamped);
 }
 
-// Compute unsigned curvature Îº(t)
+// Compute signed curvature k(t)
+float signedCurvature(const std::vector<Point>& controlPoints, float t) {
+	return curvatureImpl(controlPoints, t, true);
+}
+
+// Compute unsigned curvature |k(t)|
 float unsignedCurvature(const std::vector<Point>& controlPoints, float t) {
-	Point r1 = bezierDerivative(controlPoints, t);
-	Point r2 = bezierSecondDerivative(controlPoints, t);
-
-	// Compute cross product magnitude for 2D case (determinant form)
-	float crossProduct = (r1.x * r2.y - r1.y * r2.x);
-
-	// Compute denominator |r'(t)|^3
-	float speedCubed = std::pow(std::sqrt(r1.x * r1.x + r1.y * r1.y), 3);
-
-	// Avoid division by zero
-	if (speedCubed < 1e-6) return 0.0;
-
-	return fabs(crossProduct) / speedCubed;
+	return curvatureImpl(controlPoints, t, false);
 }
 
 Pose findXandY(const std::vector<Point>& controlPoints, float t) {

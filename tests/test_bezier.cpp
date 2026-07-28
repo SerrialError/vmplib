@@ -95,6 +95,21 @@ TEST_CASE("findTForS round-trips against sFunction on a curve") {
     }
 }
 
+TEST_CASE("curvature saturates high at a cusp, not to zero") {
+    // P0 == P1 makes r'(0) vanish, so the curvature denominator collapses.
+    const std::vector<Point> cusp = {{0.f, 0.f}, {0.f, 0.f}, {1.f, 1.f}, {2.f, 0.f}};
+
+    const float kappa = unsignedCurvature(cusp, 0.f);
+    CHECK(kappa > 100.f);
+
+    // The curvature speed limit must therefore collapse toward zero rather
+    // than leaving the robot unrestricted at the sharpest point on the path.
+    const float trackWidth = 0.295f;
+    const float radius = 1.f / kappa;
+    const float limit = radius / (radius + trackWidth / 2.f);
+    CHECK(limit < 0.01f);
+}
+
 TEST_CASE("findXandY matches the Bezier definition at the endpoints") {
     const Pose start = findXandY(kQuarterCircle, 0.f);
     const Pose end = findXandY(kQuarterCircle, 1.f);
