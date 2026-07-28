@@ -10,7 +10,6 @@ public:
         const std::vector<Point>& controlPts,
         float maxLinVel,
         float maxLinAccel,
-        float decelDist,
         float timeAccum,
         float startVel,
         float endVel,
@@ -38,17 +37,21 @@ private:
     float time_accum_;
     float cur_speed_;
     size_t prev_keyframe_idx_;
+    size_t step_count_;
 
     // Parameters
     const std::vector<Point>& control_;
     float max_lin_vel_;
     float max_lin_accel_;
-    float decel_distance_;
     float exit_velocity_;
-    float initial_velocity_;
     bool use_keyframes_;
     float dt_;
     std::vector<KeyframeVelocities> keyframes_;
+
+    // Total arc length of the segment; constant, so computed once.
+    float total_length_;
+    // Backstop so a non-advancing profile fails fast instead of looping forever.
+    size_t max_steps_;
 
     // Accumulated output
     std::vector<Pose> poses_;
@@ -56,8 +59,8 @@ private:
 
     // Helper methods
     float computeCurvatureVelocityLimit(float t) const;
-    float computeAccelerationLimit(float s) const;
-    float computeDecelerationLimit(float s) const;
+    float computeAccelerationLimit() const;
+    float computeBrakingLimit(float s) const;
     float computeKeyframeLimit();
     float findNextT(float s0, float deltaS) const;
 };

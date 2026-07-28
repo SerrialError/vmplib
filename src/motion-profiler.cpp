@@ -54,21 +54,12 @@ void printVels(
                     ? keyframes.back().velocity
                     : 0.0f;
 
-      // 3) Compute total spline length = sFunction(…, t=1)
-      float totalLength = sFunction(controlPoints[i], 1.0f);
-
-      // 4) Compute deceleration distance:
-      //    decelDist = totalLength − [ (exitVel² − maxVel²) / (−2·maxAccel) ]
-      float decelDist = totalLength 
-                    - ((std::pow(exitVel, 2.0f) - std::pow(MAX_VELOCITY, 2.0f))
-                       / (-2.0f * MAX_ACCEL));
-    
-      // 5) Build and run the trapezoidal profile
+      // 3) Build and run the trapezoidal profile. The braking ramp is derived
+      //    from the distance remaining, so no deceleration distance is needed.
       TrapezoidalProfile profiler(
           controlPoints[i],
           MAX_VELOCITY,
           MAX_ACCEL,
-          decelDist,
 	  	  timeAccum,
           initialVel,
           exitVel,

@@ -25,12 +25,7 @@ const std::vector<Point> kHairpin = {
     {0.f, 0.f}, {1.2f, 0.f}, {1.2f, 0.25f}, {0.f, 0.25f}};
 
 TrapezoidalProfile makeProfile(const std::vector<Point>& pts, float startVel, float endVel) {
-    const float totalLength = sFunction(pts, 1.0f);
-    const float decelDist =
-        totalLength - (kMaxVel * kMaxVel - endVel * endVel) / (2.0f * kMaxAccel);
-
-    return TrapezoidalProfile(pts, kMaxVel, kMaxAccel, decelDist, 0.0f, startVel, endVel, {},
-                              false, kDt);
+    return TrapezoidalProfile(pts, kMaxVel, kMaxAccel, 0.0f, startVel, endVel, {}, false, kDt);
 }
 
 // Steps the profile with a hard cap so a non-terminating profile fails rather
@@ -100,15 +95,51 @@ TEST_CASE("angular velocity is consistent with curvature and linear velocity") {
     }
 }
 
-// --- Known-failing: documents bugs fixed in later PRs ----------------------
-
-TEST_CASE("profile on a short path terminates" * doctest::should_fail()) {
-    // M3: decelDist goes negative when the path is shorter than the braking
-    // distance, so the acceleration branch never fires and the commanded speed
-    // stays pinned at the start velocity (zero), advancing t by nothing.
+TEST_CASE("profile on a path shorter than the braking distance terminates") {
+    // kShortPath is 0.30 m; braking from kMaxVel to rest needs 0.43 m, so the
+    // braking limit is active from the very first step.
     TrapezoidalProfile profile = makeProfile(kShortPath, 0.f, 0.f);
-    CHECK(runToCompletion(profile));
+    REQUIRE(runToCompletion(profile));
+    CHECK(profile.getPoses().size() > 1);
 }
+
+TEST_CASE("profile brakes to the exit velocity by the end of the path") {
+    // The final sample is taken up to one step short of the end, where the
+    // braking ramp still permits v = sqrt(2*a*deltaS) with deltaS = v*dt.
+    // Solving gives a floor of 2*a*dt, which bounds the overshoot.
+    const float tolerance = 2.0f * kMaxAccel * kDt;
+
+    for (float exitVel : {0.0f, 0.5f}) {
+        CAPTURE(exitVel);
+        TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, exitVel);
+        REQUIRE(runToCompletion(profile));
+        CHECK(profile.getVelocities().back().linear <= exitVel + tolerance);
+    }
+}
+
+TEST_CASE("braking limit keeps the profile stoppable at every point") {
+    // At each sample the commanded speed must be low enough that constant
+    // max deceleration still reaches exit velocity by the end of the path.
+    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    REQUIRE(runToCompletion(profile));
+
+    const float total = sFunction(kLongPath, 1.0f);
+    const auto& poses = profile.getPoses();
+    const auto& vels = profile.getVelocities();
+
+    float travelled = 0.f;
+    for (size_t i = 1; i < poses.size(); ++i) {
+        const float dx = poses[i].x - poses[i - 1].x;
+        const float dy = poses[i].y - poses[i - 1].y;
+        travelled += std::sqrt(dx * dx + dy * dy);
+
+        const float remaining = std::max(0.f, total - travelled);
+        const float stoppable = std::sqrt(2.0f * kMaxAccel * remaining);
+        CHECK(vels[i].linear <= stoppable + 0.05f);
+    }
+}
+
+// --- Known-failing: documents bugs fixed in later PRs ----------------------
 
 TEST_CASE("commanded velocity respects the acceleration limit" * doctest::should_fail()) {
     // M5: the greedy planner caps how fast velocity may *rise*, but nothing
