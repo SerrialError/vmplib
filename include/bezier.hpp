@@ -6,6 +6,8 @@
 #include <iomanip>
 #include <algorithm>
 #include <limits>
+#include <stdexcept>
+#include <string>
 
 Point bezierDerivative(const std::vector<Point>& controlPoints, float t);
 Point bezierSecondDerivative(const std::vector<Point>& controlPoints, float t);
@@ -25,6 +27,14 @@ Pose findXandY(const std::vector<Point>& controlPoints, float t);
 float projectOntoCurve(const std::vector<Point>& controlPoints, float x, float y,
                        float* residual = nullptr);
 
+// Thrown for a keyframe that cannot be placed on the path: either too far from
+// the curve to be meaningful, or out of order along it.
+class KeyframeError : public std::runtime_error {
+public:
+    explicit KeyframeError(const std::string& what) : std::runtime_error(what) {}
+};
+
+// Throws KeyframeError rather than quietly placing a bad keyframe somewhere.
 std::vector<KeyframeVelocities> convertToTFrame(
     const std::vector<Point>& bezierPoints,
     const std::vector<KeyframeVelocitiesXandY>& keyFrameVelocitiesXY

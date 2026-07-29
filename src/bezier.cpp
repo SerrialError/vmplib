@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <limits>
+#include <sstream>
 
 // Compute derivative of a cubic Bezier curve
 Point bezierDerivative(const std::vector<Point>& controlPoints, float t) {
@@ -188,16 +189,20 @@ std::vector<KeyframeVelocities> convertToTFrame(
 		const float t = projectOntoCurve(bezierPoints, kf.x, kf.y, &residual);
 
 		if (residual > kKeyframeOffPathTolerance) {
-			std::cerr << "warning: keyframe at (" << kf.x << ", " << kf.y << ") is "
-			          << residual << " off the path; its velocity will be applied at t="
-			          << t << " instead\n";
+			std::ostringstream msg;
+			msg << "keyframe at (" << kf.x << ", " << kf.y << ") is " << residual
+			    << " off the path (tolerance " << kKeyframeOffPathTolerance
+			    << "); its velocity would be applied at t=" << t;
+			throw KeyframeError(msg.str());
 		}
 		// computeKeyframeLimit walks a sorted list, so out-of-order keyframes
-		// silently bracket the wrong interval.
+		// would silently bracket the wrong interval.
 		if (t < prevT) {
-			std::cerr << "warning: keyframe at (" << kf.x << ", " << kf.y
-			          << ") projects to t=" << t << ", behind the previous keyframe at t="
-			          << prevT << "\n";
+			std::ostringstream msg;
+			msg << "keyframe at (" << kf.x << ", " << kf.y << ") projects to t=" << t
+			    << ", behind the previous keyframe at t=" << prevT
+			    << "; keyframes must advance along the path";
+			throw KeyframeError(msg.str());
 		}
 
 		keyFrameVelocitiesT.push_back({kf.velocity, t});

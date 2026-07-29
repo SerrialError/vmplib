@@ -224,6 +224,28 @@ TEST_CASE("convertToTFrame keeps on-path keyframes ordered along the curve") {
     }
 }
 
+TEST_CASE("convertToTFrame rejects a keyframe that is off the path") {
+    // 0.2 outside a unit-radius arc, well past the 0.05 tolerance.
+    const float diag = 1.2f / std::sqrt(2.f);
+    const std::vector<KeyframeVelocitiesXandY> xy = {{diag, diag, 1.f}};
+
+    CHECK_THROWS_AS(convertToTFrame(kQuarterCircle, xy), KeyframeError);
+}
+
+TEST_CASE("convertToTFrame rejects keyframes that run backwards along the path") {
+    const Pose early = findXandY(kQuarterCircle, 0.25f);
+    const Pose late = findXandY(kQuarterCircle, 0.75f);
+
+    const std::vector<KeyframeVelocitiesXandY> backwards = {
+        {late.x, late.y, 1.f}, {early.x, early.y, 1.f}};
+    CHECK_THROWS_AS(convertToTFrame(kQuarterCircle, backwards), KeyframeError);
+
+    // The same two keyframes in path order are accepted.
+    const std::vector<KeyframeVelocitiesXandY> forwards = {
+        {early.x, early.y, 1.f}, {late.x, late.y, 1.f}};
+    CHECK_NOTHROW(convertToTFrame(kQuarterCircle, forwards));
+}
+
 TEST_CASE("findXandY matches the Bezier definition at the endpoints") {
     const Pose start = findXandY(kQuarterCircle, 0.f);
     const Pose end = findXandY(kQuarterCircle, 1.f);
