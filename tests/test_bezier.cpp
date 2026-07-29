@@ -95,6 +95,76 @@ TEST_CASE("findTForS round-trips against sFunction on a curve") {
     }
 }
 
+TEST_CASE("curvature saturates high at a cusp, not to zero") {
+    // P0 == P1 makes r'(0) vanish, so the curvature denominator collapses.
+    const std::vector<Point> cusp = {{0.f, 0.f}, {0.f, 0.f}, {1.f, 1.f}, {2.f, 0.f}};
+
+    const float kappa = unsignedCurvature(cusp, 0.f);
+    CHECK(kappa > 100.f);
+
+    // The curvature speed limit must therefore collapse toward zero rather
+    // than leaving the robot unrestricted at the sharpest point on the path.
+    const float trackWidth = 0.295f;
+    const float radius = 1.f / kappa;
+    const float limit = radius / (radius + trackWidth / 2.f);
+    CHECK(limit < 0.01f);
+}
+
+TEST_CASE("composite quadrature is more accurate than a single panel") {
+    // A long curve where the integrand varies sharply: a single 5-point panel
+    // over [0,1] measurably underestimates the length.
+    const std::vector<Point> wiggly = {{0.f, 0.f}, {6.f, 5.f}, {-5.f, 5.f}, {1.f, 0.f}};
+
+    // Reference: fine-grained polyline through many samples.
+    double reference = 0.0;
+    const int samples = 20000;
+    Pose prev = findXandY(wiggly, 0.f);
+    for (int i = 1; i <= samples; ++i) {
+        const Pose cur = findXandY(wiggly, static_cast<float>(i) / samples);
+        const double dx = cur.x - prev.x;
+        const double dy = cur.y - prev.y;
+        reference += std::sqrt(dx * dx + dy * dy);
+        prev = cur;
+    }
+
+    const float single = arcLength(wiggly, 0.f, 1.f);
+    const float composite = sFunction(wiggly, 1.f);
+
+    CHECK(std::fabs(composite - reference) < std::fabs(single - reference));
+    CHECK(composite == doctest::Approx(reference).epsilon(1e-3));
+}
+
+TEST_CASE("findTForS honours the initial guess without changing the root") {
+    const float total = sFunction(kQuarterCircle, 1.f);
+    const float target = total * 0.7f;
+
+    // Every seed must land on the same root.
+    const float fromLow = findTForS(kQuarterCircle, 0.f, target, 0.05f);
+    const float fromMid = findTForS(kQuarterCircle, 0.f, target, 0.5f);
+    const float fromHigh = findTForS(kQuarterCircle, 0.f, target, 0.95f);
+
+    CHECK(fromLow == doctest::Approx(fromMid).epsilon(1e-3));
+    CHECK(fromHigh == doctest::Approx(fromMid).epsilon(1e-3));
+    CHECK(sFunction(kQuarterCircle, fromMid) == doctest::Approx(target).epsilon(1e-3));
+}
+
+TEST_CASE("findTForS saturates at t=1 when the target is past the end") {
+    const float total = sFunction(kStraight, 1.f);
+    CHECK(findTForS(kStraight, 0.f, total * 2.f) == doctest::Approx(1.0).epsilon(1e-5));
+}
+
+TEST_CASE("findTForS falls back to bisection near a cusp") {
+    // r'(0) = 0, so Newton's derivative vanishes at the seed.
+    const std::vector<Point> cusp = {{0.f, 0.f}, {0.f, 0.f}, {1.f, 1.f}, {2.f, 0.f}};
+    const float total = sFunction(cusp, 1.f);
+    REQUIRE(total > 0.f);
+
+    const float t = findTForS(cusp, 0.f, total * 0.5f, 0.0f);
+    CHECK(t > 0.f);
+    CHECK(t < 1.f);
+    CHECK(sFunction(cusp, t) == doctest::Approx(total * 0.5f).epsilon(1e-2));
+}
+
 TEST_CASE("findXandY matches the Bezier definition at the endpoints") {
     const Pose start = findXandY(kQuarterCircle, 0.f);
     const Pose end = findXandY(kQuarterCircle, 1.f);

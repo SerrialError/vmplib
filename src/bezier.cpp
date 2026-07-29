@@ -29,38 +29,90 @@ float speed(const std::vector<Point>& controlPoints, float t) {
 	Point deriv = bezierDerivative(controlPoints, t);
 	return std::sqrt(deriv.x * deriv.x + deriv.y * deriv.y);
 }
-// Compute arc length using Gaussian quadrature
-float arcLength(const std::vector<Point>& controlPoints, float a, float b) {
-	// Gaussian quadrature weights and nodes for n=5, if using quadratic bezier n=3
-	const std::vector<float> gaussNodes = {-0.9061798459, -0.5384693101, 0.0, 0.5384693101, 0.9061798459};
-	const std::vector<float> gaussWeights = {0.2369268850, 0.4786286705, 0.5688888889, 0.4786286705, 0.2369268850};
-	float length = 0.0;
-	for (size_t i = 0; i < gaussNodes.size(); i++) {
-		float t = (b - a) / 2.0 * gaussNodes[i] + (a + b) / 2.0;
-		length += gaussWeights[i] * speed(controlPoints, t);
-	}
-	return (b - a) / 2.0 * length;
-}
-// Compute s(t) from 0 to t
-float sFunction(const std::vector<Point>& controlPoints, float t) {
-	return arcLength(controlPoints, 0, t);
-}
-// Newton-Raphson to find t for s(t) = s_current + delta_s
-float findTForS(const std::vector<Point>& controlPoints, float sCurrent, float deltaS) {
-	float tol = 1e-6;
-	float t = 0.5; // Initial guess
-	int maxIter = 20;
-	for (int i = 0; i < maxIter; i++) {
-		float s_t = sFunction(controlPoints, t);
-		float f_t = s_t - sCurrent - deltaS;
-		float f_prime_t = speed(controlPoints, t);
+// 5-point Gauss-Legendre nodes and weights on [-1, 1].
+static constexpr int kGaussN = 5;
+static constexpr double kGaussNodes[kGaussN] = {
+	-0.9061798459386640, -0.5384693101056831, 0.0,
+	0.5384693101056831, 0.9061798459386640};
+static constexpr double kGaussWeights[kGaussN] = {
+	0.2369268850561891, 0.4786286704993665, 0.5688888888888889,
+	0.4786286704993665, 0.2369268850561891};
 
-		if (std::fabs(f_t) < tol) break;
-		t -= f_t / f_prime_t;
-		if (t < 0) t = 0;
-		if (t > 1) t = 1;
+// Number of panels used by sFunction. The integrand is the square root of a
+// polynomial rather than a polynomial, so the degree-(2n-1) exactness of
+// Gauss-Legendre does not apply and a single panel over [0, t] leaves real
+// error on long or wiggly curves. Subdividing restores accuracy cheaply.
+static constexpr int kArcLengthPanels = 8;
+
+// Compute arc length over [a, b] with a single Gaussian quadrature panel.
+float arcLength(const std::vector<Point>& controlPoints, float a, float b) {
+	const double half = (b - a) / 2.0;
+	const double mid = (a + b) / 2.0;
+	double length = 0.0;
+	for (int i = 0; i < kGaussN; i++) {
+		const double t = half * kGaussNodes[i] + mid;
+		length += kGaussWeights[i] * speed(controlPoints, static_cast<float>(t));
 	}
-	return t;
+	return static_cast<float>(half * length);
+}
+
+// Compute s(t) from 0 to t using composite quadrature.
+float sFunction(const std::vector<Point>& controlPoints, float t) {
+	if (t <= 0.0f) {
+		return 0.0f;
+	}
+	const double step = static_cast<double>(t) / kArcLengthPanels;
+	double total = 0.0;
+	for (int i = 0; i < kArcLengthPanels; i++) {
+		total += arcLength(controlPoints, static_cast<float>(step * i),
+		                   static_cast<float>(step * (i + 1)));
+	}
+	return static_cast<float>(total);
+}
+
+// Solve s(t) = sCurrent + deltaS for t by Newton-Raphson, falling back to
+// bisection when the parametric speed is too small for Newton to be stable.
+float findTForS(const std::vector<Point>& controlPoints, float sCurrent, float deltaS,
+                float tGuess) {
+	const float target = sCurrent + deltaS;
+	const float tol = 1e-6f;
+	const int maxIter = 20;
+
+	// s(t) is monotonically increasing, so a target past the end saturates.
+	if (sFunction(controlPoints, 1.0f) <= target) {
+		return 1.0f;
+	}
+
+	float t = std::clamp(tGuess, 0.0f, 1.0f);
+	for (int i = 0; i < maxIter; i++) {
+		const float residual = sFunction(controlPoints, t) - target;
+		if (std::fabs(residual) < tol) {
+			return t;
+		}
+
+		const float derivative = speed(controlPoints, t);
+		if (derivative < 1e-9f) {
+			break; // Near-cusp: Newton is unusable here.
+		}
+
+		const float tNext = std::clamp(t - residual / derivative, 0.0f, 1.0f);
+		if (std::fabs(tNext - t) < tol) {
+			return tNext;
+		}
+		t = tNext;
+	}
+
+	float lo = 0.0f;
+	float hi = 1.0f;
+	for (int i = 0; i < 50; i++) {
+		const float mid = 0.5f * (lo + hi);
+		if (sFunction(controlPoints, mid) < target) {
+			lo = mid;
+		} else {
+			hi = mid;
+		}
+	}
+	return 0.5f * (lo + hi);
 }
 
 // Evaluate cubic Bézier component at t
@@ -163,38 +215,47 @@ std::vector<KeyframeVelocities> convertToTFrame(
 	}
 	return keyFrameVelocitiesT;
 }
-// Compute signed curvature Îº(t)
-float signedCurvature(const std::vector<Point>& controlPoints, float t) {
-	Point r1 = bezierDerivative(controlPoints, t);
-	Point r2 = bezierSecondDerivative(controlPoints, t);
+// Curvature returned where |r'(t)| collapses. A cusp has infinite curvature,
+// so saturating high is the safe direction: the curvature speed limit
+// v_max * R/(R + w/2) then drives the commanded speed toward zero. Returning
+// zero instead would remove the speed limit at the sharpest point on the path.
+// The resulting angular velocity tends to 2*v_max/w, i.e. turning in place at
+// the drivetrain's maximum rate, which is the correct physical limit.
+static constexpr float kDegenerateCurvature = 1.0e4f;
 
-	// Compute cross product magnitude for 2D case (determinant form)
-	float crossProduct = (r1.x * r2.y - r1.y * r2.x);
+// Curvature magnitude and sign share a denominator; compute once.
+static float curvatureImpl(const std::vector<Point>& controlPoints, float t, bool signedResult) {
+	const Point r1 = bezierDerivative(controlPoints, t);
+	const Point r2 = bezierSecondDerivative(controlPoints, t);
 
-	// Compute denominator |r'(t)|^3
-	float speedCubed = std::pow(std::sqrt(r1.x * r1.x + r1.y * r1.y), 3);
+	// 2D cross product (determinant form)
+	const float crossProduct = r1.x * r2.y - r1.y * r2.x;
 
-	// Avoid division by zero
-	if (speedCubed < 1e-6) return 0.0;
+	// |r'(t)|^3, computed without a pow() round trip
+	const float speedSquared = r1.x * r1.x + r1.y * r1.y;
+	const float speedCubed = speedSquared * std::sqrt(speedSquared);
 
-	return crossProduct / speedCubed;
+	if (speedCubed < 1e-12f) {
+		if (!signedResult) {
+			return kDegenerateCurvature;
+		}
+		// Preserve turn direction where it is still recoverable.
+		return crossProduct < 0.0f ? -kDegenerateCurvature : kDegenerateCurvature;
+	}
+
+	const float kappa = crossProduct / speedCubed;
+	const float clamped = std::clamp(kappa, -kDegenerateCurvature, kDegenerateCurvature);
+	return signedResult ? clamped : std::fabs(clamped);
 }
 
-// Compute unsigned curvature Îº(t)
+// Compute signed curvature k(t)
+float signedCurvature(const std::vector<Point>& controlPoints, float t) {
+	return curvatureImpl(controlPoints, t, true);
+}
+
+// Compute unsigned curvature |k(t)|
 float unsignedCurvature(const std::vector<Point>& controlPoints, float t) {
-	Point r1 = bezierDerivative(controlPoints, t);
-	Point r2 = bezierSecondDerivative(controlPoints, t);
-
-	// Compute cross product magnitude for 2D case (determinant form)
-	float crossProduct = (r1.x * r2.y - r1.y * r2.x);
-
-	// Compute denominator |r'(t)|^3
-	float speedCubed = std::pow(std::sqrt(r1.x * r1.x + r1.y * r1.y), 3);
-
-	// Avoid division by zero
-	if (speedCubed < 1e-6) return 0.0;
-
-	return fabs(crossProduct) / speedCubed;
+	return curvatureImpl(controlPoints, t, false);
 }
 
 Pose findXandY(const std::vector<Point>& controlPoints, float t) {
