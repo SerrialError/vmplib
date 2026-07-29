@@ -5,22 +5,11 @@
 #include <cmath>
 #include "types.hpp"
 
+// Geometry helpers that are not tied to a Bezier live here; the curve
+// routines themselves are declared in bezier.hpp.
 namespace MotionUtils {
 
-    // Returns the “arc-length parameter” s for a Bezier defined by controlPts at parameter t
-    float sFunction(const std::vector<Point>& controlPts, float t);
-
-    // Returns curvature of the spline at parameter t
-    float unsignedCurvature(const std::vector<Point>& controlPts, float t);
-    float signedCurvature(const std::vector<Point>& controlPts, float t);
-
-    // Returns the (x,y,θ) Pose on the spline at parameter t
-    Pose findXandY(const std::vector<Point>& controlPts, float t);
-
-    // Finds the next t such that s(t) − s0 = deltaS (e.g., by binary search or Newton)
-    float findTForS(const std::vector<Point>& controlPts, float s0, float deltaS);
-
-    // Wraps an angle into [–π, +π]
+    // Wraps an angle into [-pi, +pi]
     inline float wrapAngle(float angle) {
         float wrapped = std::fmod(angle + static_cast<float>(M_PI), 2.0f * static_cast<float>(M_PI));
         if (wrapped < 0) wrapped += 2.0f * static_cast<float>(M_PI);

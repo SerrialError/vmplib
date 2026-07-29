@@ -13,5 +13,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: make
-      run: make all
+    - name: build
+      run: make all WARNINGS="-Wall -Wextra -Wshadow -Werror"
+    - name: test
+      run: make test WARNINGS="-Wall -Wextra -Wshadow -Werror"
+    - name: run example
+      run: ./bin/main --file examples/path-points.txt

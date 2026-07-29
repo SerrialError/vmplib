@@ -15,8 +15,9 @@ struct VelocityLayout {
     float linear, angular, time;
 };
 
+// A target velocity pinned to a Bezier parameter t, not to a wall-clock time.
 struct KeyframeVelocities {
-    float velocity, time;
+    float velocity, t;
 };
 
 struct KeyframeVelocitiesXandY {
