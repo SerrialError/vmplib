@@ -3,12 +3,21 @@
 /obj/
 /*.o
 
+# --- Generated output ---
+output.txt
+
 # --- Nix ---
 result            # flake result link
-.dev-environment  # old nix-shell env dir
 *.drv             # Nix derivations
 .nix-channels
 .nix-profile
+
+# devenv
+.devenv*
+devenv.local.nix
+
+# direnv
+.direnv
 
 # --- IDE / editor ---
 # Vim

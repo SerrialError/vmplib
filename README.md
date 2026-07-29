@@ -30,7 +30,7 @@ Use `vmplib` to generate 2d motion profiles for autonomous routines or simulatio
 ### Prerequisites  
 - **GNU Make**  
 - **g++** (or `clang++`) with C++17 support  
-- (Optional) Nix & `nix develop`
+- (Optional) [devenv](https://devenv.sh) & [direnv](https://direnv.net)
 
 ### Clone & Build  
 
@@ -39,10 +39,12 @@ git clone https://github.com/SerrialError/vmplib.git
 cd vmplib
 make          # builds bin/main
 ```
-or with Nix Flakes
+or with devenv
 ```bash
-nix develop   # drop into shell with g++ & cmake
-make
+direnv allow    # auto-loads the shell on cd, or run `devenv shell` manually
+build           # == make all
+run             # builds, then runs bin/main
+clean           # == make clean
 ```
 
 ---
