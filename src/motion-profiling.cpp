@@ -23,12 +23,14 @@ TrapezoidalProfile::TrapezoidalProfile(
     float endVel,
     const std::vector<KeyframeVelocities>& keyframes,
     bool useKeyframes,
-    float dt
+    float dt,
+    float startArcLength
 )
     : s_current_(0.0f),
       prev_t_(0.0f),
       time_accum_(timeAccum),
       cur_speed_(startVel),
+      overshoot_(0.0f),
       step_count_(0),
       control_(controlPts),
       max_lin_vel_(maxLinVel),
@@ -42,8 +44,22 @@ TrapezoidalProfile::TrapezoidalProfile(
       max_steps_(static_cast<size_t>(60.0f / dt))
 {
     buildVelocityLimits();
+
+    prev_t_ = parameterAt(startArcLength);
+    s_current_ = arcLengthAt(prev_t_);
+    // A carry-over longer than the whole segment skips it outright and has to
+    // keep travelling into the next one.
+    overshoot_ = std::max(0.0f, startArcLength - total_length_);
+    // A segment too short to brake in cannot honour the requested start
+    // velocity; the backward pass has already worked out what it can do.
+    cur_speed_ = std::min(cur_speed_, velocityAt(s_current_));
+
     poses_.reserve(1000);
     velocities_.reserve(1000);
+}
+
+float TrapezoidalProfile::overshootArcLength() const {
+    return overshoot_;
 }
 
 bool TrapezoidalProfile::isFinished() const {
@@ -148,9 +164,6 @@ void TrapezoidalProfile::buildVelocityLimits() {
         limit_v_[i] = std::min(limit_v_[i], reachable);
     }
 
-    // A segment too short to brake in cannot honour the requested start
-    // velocity; the backward pass has already worked out what it can do.
-    cur_speed_ = std::min(cur_speed_, limit_v_.front());
 }
 
 float TrapezoidalProfile::arcLengthAt(float t) const {
@@ -208,9 +221,9 @@ float TrapezoidalProfile::velocityAt(float s) const {
 }
 
 void TrapezoidalProfile::start() {
-    poses_.push_back(findXandY(control_, 0.0f));
+    poses_.push_back(findXandY(control_, prev_t_));
     velocities_.push_back(
-        VelocityLayout{ cur_speed_, signedCurvature(control_, 0.0f) * cur_speed_, time_accum_ });
+        VelocityLayout{ cur_speed_, signedCurvature(control_, prev_t_) * cur_speed_, time_accum_ });
 }
 
 void TrapezoidalProfile::step() {
@@ -221,7 +234,12 @@ void TrapezoidalProfile::step() {
     // The curve caps deceleration; the acceleration cap is the forward pass,
     // applied here one timestep at a time.
     const float desired_linear = std::min(velocityAt(s_current_), computeAccelerationLimit());
-    const float next_t = parameterAt(s_current_ + desired_linear * dt_);
+
+    // The step that ends the segment lands past t = 1. Record by how much so
+    // the next segment can start there instead of discarding the travel.
+    const float s_target = s_current_ + desired_linear * dt_;
+    overshoot_ = std::max(0.0f, s_target - total_length_);
+    const float next_t = parameterAt(s_target);
 
     const float kappa = signedCurvature(control_, next_t);
     poses_.push_back(findXandY(control_, next_t));

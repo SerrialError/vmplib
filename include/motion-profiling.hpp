@@ -17,7 +17,12 @@ public:
         float endVel,
         const std::vector<KeyframeVelocities>& keyframes,
         bool useKeyframes,
-        float dt
+        float dt,
+        // Arc length already travelled into this segment. A timestep almost
+        // never lands exactly on a segment boundary, so the previous segment
+        // hands over its overshoot here and the timestep grid stays uniform
+        // across the join.
+        float startArcLength = 0.0f
     );
 
     // Advance one timestep. Returns (linear, angular, time)
@@ -27,10 +32,14 @@ public:
     // True once t ≥ 1.0
     bool isFinished() const;
 
+    // Distance the final step ran past the end of the segment. Feed this to the
+    // next segment's startArcLength.
+    float overshootArcLength() const;
+
     // Access generated path poses & velocities
     const std::vector<Pose>& getPoses() const;
     const std::vector<VelocityLayout>& getVelocities() const;
-    
+
 
 private:
     // Internal state
@@ -38,6 +47,7 @@ private:
     float prev_t_;
     float time_accum_;
     float cur_speed_;
+    float overshoot_;
     size_t step_count_;
 
     // Parameters

@@ -3,6 +3,7 @@
 #include "motion-profiling.hpp"   // TrapezoidalProfile
 #include "ramsete.hpp"            // RamseteFollower
 #include "printer.hpp"            // Printer::printPoseVector / printVelocityVector
+#include <algorithm>
 #include <cmath>
 #include <vector>
 #include <string>
@@ -17,6 +18,9 @@ constexpr float   TRACK_WIDTH  = 0.29508135f;       // meters
 constexpr float   RAMSETE_B    = 2.0f;
 constexpr float   RAMSETE_ZETA = 0.7f;
 constexpr float   DT           = 0.01f;           // 10 ms timestep
+// A keyframe within this much of t = 0 counts as sitting on the segment join,
+// where the only room to brake for it is in the segment before.
+constexpr float   JUNCTION_KEYFRAME_T_TOL = 1e-3f;
 bool testing = true;
 
 using namespace MotionUtils; // for sFunction, curvature, findXandY, findTForS, wrapAngle, sinc
@@ -31,31 +35,51 @@ void printVels(
     std::vector<std::vector<VelocityLayout>> Velocities;
     std::vector<std::vector<Pose>> RamsetePoses;
     std::vector<std::vector<VelocityLayout>> RamseteVelocities;
+    // 1) Convert every segment's (x,y,velocity) keyframes to (velocity, t) up
+    //    front. A segment's exit velocity depends on the *next* segment's
+    //    keyframes, which cannot be resolved one segment at a time.
+    std::vector<std::vector<KeyframeVelocities>> keyframesPerSegment(controlPoints.size());
+    if (useKeyFrames) {
+        const size_t n = std::min(controlPoints.size(), keyFrameVelocityInitList.size());
+        for (size_t i = 0; i < n; ++i) {
+            keyframesPerSegment[i] = convertToTFrame(controlPoints[i], keyFrameVelocityInitList[i]);
+        }
+    }
+
+    float carryOverArcLength = 0.0f;
+    bool havePreviousSegment = false;
+
     for (size_t i = 0; i < controlPoints.size(); ++i) {
 
-      // 1) Convert (x,y,velocity) keyframes → (time, scalar‐velocity) keyframes,
-      //    only if the user requested key-frame limiting.
-      std::vector<KeyframeVelocities> keyframes;
-      if (useKeyFrames && !keyFrameVelocityInitList.empty()) {
-          keyframes = convertToTFrame(controlPoints[i], keyFrameVelocityInitList[i]);
+      const std::vector<KeyframeVelocities>& keyframes = keyframesPerSegment[i];
+
+      // 2) Determine initial and exit velocity.
+      //    Velocity is continuous across a junction, so a segment starts at
+      //    whatever the previous one actually ended at. Only the first segment
+      //    is free to take its start velocity from a keyframe.
+      float initialVel = 0.0f;
+      if (havePreviousSegment) {
+          initialVel = Velocities.back().back().linear;
+      } else if (!keyframes.empty()) {
+          initialVel = keyframes.front().velocity;
       }
 
-      // 2) Determine initial and exit velocity
-      float initialVel = (useKeyFrames && !keyframes.empty())
-                       ? keyframes.front().velocity
-                       : 0.0f;
-	  // Velocities is std::vector<std::vector<VelocityLayout>>
-	  if (!Velocities.empty() && !Velocities.back().empty()) {
-    	// reference to last inner vector
-    	auto &lastInner = Velocities.back();
-    	initialVel = lastInner.back().linear;
-	  }
-      float exitVel = (useKeyFrames && !keyframes.empty())
-                    ? keyframes.back().velocity
-                    : 0.0f;
+      float exitVel = keyframes.empty() ? 0.0f : keyframes.back().velocity;
 
-      // 3) Build and run the trapezoidal profile. The braking ramp is derived
-      //    from the distance remaining, so no deceleration distance is needed.
+      //    A keyframe sitting on the first point of the next segment has no
+      //    room to be met inside that segment, so it is really a constraint on
+      //    this segment's exit velocity. Braking for it has to start here.
+      if (i + 1 < keyframesPerSegment.size()) {
+          const std::vector<KeyframeVelocities>& next = keyframesPerSegment[i + 1];
+          if (!next.empty() && next.front().t <= JUNCTION_KEYFRAME_T_TOL) {
+              exitVel = next.front().velocity;
+          }
+      }
+
+      // 3) Build and run the trapezoidal profile. Deceleration comes from the
+      //    backward pass inside the profile, so no braking distance is needed
+      //    here. carryOverArcLength resumes where the previous segment's last
+      //    timestep overshot the join.
       TrapezoidalProfile profiler(
           controlPoints[i],
           MAX_VELOCITY,
@@ -66,13 +90,26 @@ void printVels(
           exitVel,
           keyframes,
           useKeyFrames,
-          DT
+          DT,
+          carryOverArcLength
       );
 
-      profiler.start();
+      // Only the first segment emits a sample at its start pose. For the rest
+      // that pose is the join, already covered by the previous segment's final
+      // sample, and re-emitting it would duplicate a timestamp.
+      if (!havePreviousSegment) {
+          profiler.start();
+      }
       while (!profiler.isFinished()) {
           profiler.step();
       }
+      carryOverArcLength = profiler.overshootArcLength();
+      if (profiler.getVelocities().empty()) {
+          // The carry-over covered this segment whole, so it produced no
+          // samples. The remainder rolls on to the next one.
+          continue;
+      }
+      havePreviousSegment = true;
       Poses.push_back(profiler.getPoses());
       Velocities.push_back(profiler.getVelocities());
 
@@ -94,7 +131,7 @@ void printVels(
 
       RamsetePoses.push_back(ramser.getExecutedPoses());
       RamseteVelocities.push_back(ramser.getExecutedVelocities());
-      timeAccum = profiler.getVelocities()[profiler.getVelocities().size() - 1].time;
+      timeAccum = profiler.getVelocities().back().time;
     }
 	if (testing) {
 		// 6) Print the open-loop (“nominal”) path:
