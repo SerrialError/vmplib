@@ -156,11 +156,12 @@ TEST_CASE("braking limit keeps the profile stoppable at every point") {
         travelled += std::sqrt(dx * dx + dy * dy);
 
         const float remaining = std::max(0.f, total - travelled);
+        // The continuous ramp is the ceiling. The profile rides the discrete
+        // one, which sits strictly below it, so no discretization slack is
+        // needed here -- only room for the chord-length approximation of
+        // travelled above.
         const float stoppable = std::sqrt(2.0f * kMaxAccel * remaining);
-        // Same 2*a*dt discretization floor as the exit-velocity test: the
-        // sample is taken before the step it commands, so the last few
-        // samples sit one step's worth of travel above the ideal ramp.
-        CHECK(vels[i].linear <= stoppable + 2.0f * kMaxAccel * kDt);
+        CHECK(vels[i].linear <= stoppable + 1e-3f);
     }
 }
 
@@ -173,11 +174,9 @@ TEST_CASE("the final step reports how far it ran past the end of the segment") {
     const auto& vels = profile.getVelocities();
     REQUIRE(vels.size() > 1);
 
-    // A step advances by v*dt. The speed that drove the final step is no longer
-    // in the output, since the endpoint sample reports the exit velocity
-    // instead, but it was at most one acceleration step above the sample
-    // before it.
-    const float lastStep = (vels[vels.size() - 2].linear + kMaxAccel * kDt) * kDt;
+    // A step advances by v*dt at the speed held where it began, which is what
+    // the previous sample carries.
+    const float lastStep = vels[vels.size() - 2].linear * kDt;
     CHECK(profile.overshootArcLength() >= 0.f);
     CHECK(profile.overshootArcLength() <= lastStep + 1e-5f);
 }
@@ -290,28 +289,56 @@ TEST_CASE("commanded velocity respects the acceleration limit") {
     // segment. Without the backward pass the profile stepped off the ceiling
     // in a single sample; with it, the profile brakes into the corner.
     //
-    // The bound is 2*a*dt rather than a*dt because each sample commands the
-    // speed at the *start* of its step while the step advances by v*dt. On the
-    // braking ramp that gives dv = v - sqrt(v^2 - 2*a*v*dt), which tends to
-    // a*dt for large v and peaks at 2*a*dt when v reaches 2*a*dt. Same
-    // discretization floor as the exit-velocity and stoppability tests.
+    // a*dt with no discretization slack on top, and the endpoint is not exempt:
+    // the limit curve is the discrete braking ramp, so riding it down spends
+    // exactly a*dt per step and leaves at most that much for the final sample.
+    // A looser bound here would let the profile end with a step no drivetrain
+    // could execute, which is what it used to do.
     TrapezoidalProfile profile = makeProfile(kHairpin, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const auto& vels = profile.getVelocities();
-    const float maxDelta = 2.0f * kMaxAccel * kDt;
-    for (size_t i = 1; i + 1 < vels.size(); ++i) {
+    const float maxDelta = kMaxAccel * kDt;
+    for (size_t i = 1; i < vels.size(); ++i) {
         CAPTURE(i);
         CHECK(std::fabs(vels[i].linear - vels[i - 1].linear) <= maxDelta + 1e-4f);
     }
+}
 
-    // The endpoint is exempt: it reports the exit velocity rather than the
-    // speed of the step that reached it, so the last drop covers the residual
-    // the discretization left as well as its own step. Both are bounded by the
-    // 2*a*dt floor above, hence twice it. Arriving at rest is worth one
-    // timestep of over-braking; the alternative is a robot that never stops.
-    CHECK(std::fabs(vels.back().linear - vels[vels.size() - 2].linear) <=
-          2.0f * maxDelta + 1e-4f);
+TEST_CASE("the acceleration limit holds across every kind of profile") {
+    // The final step is where the old continuous ramp broke down, and it only
+    // shows up once a profile actually has to land on its exit velocity. Sweep
+    // the shapes that reach it differently: braking from cruise, from a start
+    // faster than the path allows, on a path too short to brake in, and into a
+    // non-zero exit.
+    const float maxDelta = kMaxAccel * kDt + 1e-4f;
+
+    struct Case {
+        const char* name;
+        const std::vector<Point>* path;
+        float startVel;
+        float exitVel;
+    };
+    const Case cases[] = {
+        {"long, rest to rest", &kLongPath, 0.f, 0.f},
+        {"long, rest to 0.5", &kLongPath, 0.f, 0.5f},
+        {"long, cruising to rest", &kLongPath, kMaxVel, 0.f},
+        {"shorter than the braking distance", &kShortPath, 0.f, 0.f},
+        {"hairpin", &kHairpin, 0.f, 0.f},
+    };
+
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        TrapezoidalProfile profile = makeProfile(*c.path, c.startVel, c.exitVel);
+        REQUIRE(runToCompletion(profile));
+
+        const auto& vels = profile.getVelocities();
+        for (size_t i = 1; i < vels.size(); ++i) {
+            CAPTURE(i);
+            CHECK(std::fabs(vels[i].linear - vels[i - 1].linear) <= maxDelta);
+        }
+        CHECK(vels.back().linear == doctest::Approx(c.exitVel));
+    }
 }
 
 // --- RAMSETE ---------------------------------------------------------------

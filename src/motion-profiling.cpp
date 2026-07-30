@@ -125,6 +125,17 @@ float TrapezoidalProfile::keyframeCeiling(float s, const std::vector<float>& key
     return vsq > 0.0f ? std::sqrt(vsq) : 0.0f;
 }
 
+// g(v) = v^2 + a*dt*v. Braking at the limit advances g by exactly 2*a*ds per
+// unit of arc length covered, so the ramp is a straight line in g.
+float TrapezoidalProfile::brakingPotential(float v) const {
+    return v * v + max_lin_accel_ * dt_ * v;
+}
+
+float TrapezoidalProfile::velocityAtPotential(float g) const {
+    const float adt = max_lin_accel_ * dt_;
+    return 0.5f * (std::sqrt(adt * adt + 4.0f * std::max(0.0f, g)) - adt);
+}
+
 void TrapezoidalProfile::buildVelocityLimits() {
     limit_t_.resize(kLimitSamples);
     limit_s_.resize(kLimitSamples);
@@ -157,17 +168,30 @@ void TrapezoidalProfile::buildVelocityLimits() {
                                  keyframeCeiling(limit_s_[i], keyframeS, kfIdx) });
     }
 
-    // Backward pass: v^2 = v_next^2 + 2*a*ds, swept from the end. This is what
-    // makes the profile slow down *before* a constrained region instead of
-    // stepping down at it, and it subsumes the old end-of-segment braking
-    // limit. Only deceleration needs precomputing, because only deceleration
-    // depends on what lies ahead; the matching forward pass is applied online
-    // in step() as the per-timestep acceleration cap.
+    // Backward pass, swept from the end. This is what makes the profile slow
+    // down *before* a constrained region instead of stepping down at it, and it
+    // subsumes the old end-of-segment braking limit. Only deceleration needs
+    // precomputing, because only deceleration depends on what lies ahead; the
+    // matching forward pass is applied online in step() as the per-timestep
+    // acceleration cap.
+    //
+    // The textbook ramp v^2 = v_next^2 + 2*a*ds is the continuous one, and a
+    // fixed timestep cannot ride it down: each step covers v*dt, so following
+    // it drops v by v - sqrt(v^2 - 2*a*v*dt), which grows to the whole of v as
+    // v approaches 2*a*dt. The tail therefore lands short of the exit velocity
+    // and has to give the remainder back in one step, well past the
+    // acceleration limit.
+    //
+    // Stepping the recurrence backwards instead (v_j = v_end + j*a*dt at
+    // r_j = r_(j-1) + v_j*dt) gives a ramp that costs half a step's travel more
+    // and is linear in g(v) = v^2 + a*dt*v. Riding it down spends exactly
+    // a*dt per step and lands on the exit velocity, leaving a residual of at
+    // most a*dt for the endpoint sample in step() to absorb.
     limit_v_.back() = std::min(limit_v_.back(), exit_velocity_);
     for (int i = kLimitSamples - 2; i >= 0; i--) {
         const float ds = limit_s_[i + 1] - limit_s_[i];
-        const float reachable =
-            std::sqrt(limit_v_[i + 1] * limit_v_[i + 1] + 2.0f * max_lin_accel_ * ds);
+        const float reachable = velocityAtPotential(brakingPotential(limit_v_[i + 1]) +
+                                                    2.0f * max_lin_accel_ * ds);
         limit_v_[i] = std::min(limit_v_[i], reachable);
     }
 
@@ -218,13 +242,15 @@ float TrapezoidalProfile::velocityAt(float s) const {
     if (span <= 0.0f) {
         return limit_v_[hi];
     }
-    // Interpolate in v^2: within a cell the profile is a constant-acceleration
-    // ramp, which is linear in v^2 and not in v.
+    // Interpolate in the braking potential, the metric the backward pass is
+    // linear in. Interpolating in v^2 instead would restore the continuous
+    // ramp's shape inside the final cell, which is where the profile is least
+    // able to afford it: v^2 leaves the curve going as sqrt(distance-to-go)
+    // near the end, where the feasible ramp is very nearly linear in it.
     const float lambda = (s - limit_s_[lo]) / span;
-    const float v0sq = limit_v_[lo] * limit_v_[lo];
-    const float v1sq = limit_v_[hi] * limit_v_[hi];
-    const float vsq = v0sq + (v1sq - v0sq) * lambda;
-    return vsq > 0.0f ? std::sqrt(vsq) : 0.0f;
+    const float g0 = brakingPotential(limit_v_[lo]);
+    const float g1 = brakingPotential(limit_v_[hi]);
+    return velocityAtPotential(g0 + (g1 - g0) * lambda);
 }
 
 void TrapezoidalProfile::start() {
@@ -238,33 +264,31 @@ void TrapezoidalProfile::step() {
     time_accum_ += dt_;
     s_current_ = arcLengthAt(prev_t_);
 
-    // The curve caps deceleration; the acceleration cap is the forward pass,
-    // applied here one timestep at a time.
-    const float desired_linear = std::min(velocityAt(s_current_), computeAccelerationLimit());
+    // The robot crosses the step at the speed it is holding where the step
+    // begins. The curve caps deceleration; the acceleration cap is the forward
+    // pass, applied here one timestep at a time.
+    const float travel_speed = std::min(velocityAt(s_current_), computeAccelerationLimit());
 
     // The step that ends the segment lands past t = 1. Record by how much so
     // the next segment can start there instead of discarding the travel.
-    const float s_target = s_current_ + desired_linear * dt_;
+    const float s_target = s_current_ + travel_speed * dt_;
     overshoot_ = std::max(0.0f, s_target - total_length_);
     const float next_t = parameterAt(s_target);
 
-    // Every sample carries the speed held over the step that reaches it, which
-    // on a braking ramp still sits above the speed due at the point it lands
-    // on. Harmless mid-segment, but the sample on the endpoint is the last
-    // thing a drivetrain is told, so a segment meant to arrive at rest would
-    // leave it rolling. The endpoint is instead evaluated where it sits: the
-    // same minimum as any other sample, taken at the end of the segment rather
-    // than at the start of the step. The acceleration cap stays in force, so an
-    // exit velocity the robot cannot climb to in one step is not invented here.
-    const float sample_linear = (next_t >= 1.0f)
-                                    ? std::min(velocityAt(total_length_), computeAccelerationLimit())
-                                    : desired_linear;
+    // A sample states the speed to hold *at* the pose it carries, so the limit
+    // curve is read where the step lands rather than where it started. Reading
+    // it at the start put each sample half a step out of phase with its own
+    // pose: harmless in the middle of a segment, but the last sample lands on
+    // the endpoint, where the curve has already fallen to the exit velocity
+    // while the departing speed has not. That is why a segment planned to stop
+    // used to trail off at a tenth of a metre per second instead of at rest.
+    const float next_speed = std::min(velocityAt(s_target), computeAccelerationLimit());
 
     const float kappa = signedCurvature(control_, next_t);
     poses_.push_back(findXandY(control_, next_t));
     velocities_.push_back(
-        VelocityLayout{ sample_linear, kappa * sample_linear, time_accum_ });
+        VelocityLayout{ next_speed, kappa * next_speed, time_accum_ });
 
     prev_t_ = next_t;
-    cur_speed_ = sample_linear;
+    cur_speed_ = next_speed;
 }

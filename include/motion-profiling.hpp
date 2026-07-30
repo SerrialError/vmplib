@@ -85,6 +85,12 @@ private:
     float computeAccelerationLimit() const;
     float keyframeCeiling(float s, const std::vector<float>& keyframeS, size_t& idx) const;
 
+    // The braking ramp expressed as a potential that is linear in arc length.
+    // v^2 alone is the continuous ramp, which a fixed timestep cannot follow;
+    // see buildVelocityLimits. These are mutual inverses.
+    float brakingPotential(float v) const;
+    float velocityAtPotential(float g) const;
+
     // Conversions against the sampled table above. Using it for both directions
     // keeps every arc length in the profiler on one consistent metric.
     float arcLengthAt(float t) const;
