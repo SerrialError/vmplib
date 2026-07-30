@@ -216,18 +216,23 @@ TEST_CASE("keyframes are indexed by arc length, not elapsed time") {
     CHECK(vels.back().linear <= 0.25f + 0.1f);
 }
 
-// --- Known-failing: documents bugs fixed in later PRs ----------------------
-
-TEST_CASE("commanded velocity respects the acceleration limit" * doctest::should_fail()) {
-    // M5: the greedy planner caps how fast velocity may *rise*, but nothing
-    // caps how fast it may fall, so a curvature spike produces a step change
-    // that no real drivetrain can track. Fixed by the forward/backward pass.
+TEST_CASE("commanded velocity respects the acceleration limit") {
+    // A hairpin drives the curvature ceiling down hard in the middle of the
+    // segment. Without the backward pass the profile stepped off the ceiling
+    // in a single sample; with it, the profile brakes into the corner.
+    //
+    // The bound is 2*a*dt rather than a*dt because each sample commands the
+    // speed at the *start* of its step while the step advances by v*dt. On the
+    // braking ramp that gives dv = v - sqrt(v^2 - 2*a*v*dt), which tends to
+    // a*dt for large v and peaks at 2*a*dt when v reaches 2*a*dt. Same
+    // discretization floor as the exit-velocity and stoppability tests.
     TrapezoidalProfile profile = makeProfile(kHairpin, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const auto& vels = profile.getVelocities();
-    const float maxDelta = kMaxAccel * kDt;
+    const float maxDelta = 2.0f * kMaxAccel * kDt;
     for (size_t i = 1; i < vels.size(); ++i) {
+        CAPTURE(i);
         CHECK(std::fabs(vels[i].linear - vels[i - 1].linear) <= maxDelta + 1e-4f);
     }
 }
