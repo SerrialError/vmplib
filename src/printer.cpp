@@ -1,78 +1,71 @@
 // printer.cpp
 #include "printer.hpp"
-#include <fstream>
 #include <iomanip>
-#include <stdexcept>
+#include <ostream>
 
 namespace Printer {
-// Open the output file once for all printing functions
-static std::ofstream outFile("output.txt", std::ios::out);
 
 void printPoseVectorDesmos(
+	std::ostream& out,
 	const std::string& label,
 	const std::vector<std::vector<Pose>>& poses
 ) {
-	if (!outFile) {
-		throw std::runtime_error("Failed to open output.txt");
-	}
-	outFile << label << "[";
+	out << label << "[";
 	for (size_t i = 0; i < poses.size(); ++i) {
 		for (size_t j = 0; j < poses[i].size(); ++j) {
-			outFile 
+			out
 				<< "("
 				<< std::fixed << std::setprecision(6)
-				<< poses[i][j].x << "," 
-				<< poses[i][j].y 
+				<< poses[i][j].x << ","
+				<< poses[i][j].y
 				<< ")";
 			if (i != poses.size() - 1 || j != poses[i].size() - 1) {
-				outFile << ",";
+				out << ",";
 			}
 		}
 	}
-	outFile << "]\n";
+	out << "]\n";
 }
 
 void printVelocityVectorDesmos(
+	std::ostream& out,
 	const std::string& label,
 	const std::vector<std::vector<VelocityLayout>>& vels,
 	const std::string& whichField
 ) {
-	if (!outFile) {
-		throw std::runtime_error("Failed to open output.txt");
-	}
-	outFile << label << "[";
+	out << label << "[";
 	for (size_t i = 0; i < vels.size(); ++i) {
 		for (size_t j = 0; j < vels[i].size(); ++j) {
-			float value = (whichField == "linear") 
-				? vels[i][j].linear 
+			float value = (whichField == "linear")
+				? vels[i][j].linear
 				: vels[i][j].angular;
-			outFile 
+			out
 				<< "("
 				<< std::fixed << std::setprecision(6)
-				<< vels[i][j].time << "," 
-				<< value 
+				<< vels[i][j].time << ","
+				<< value
 				<< ")";
 			if (i != vels.size() - 1 || j != vels[i].size() - 1) {
-				outFile << ",";
+				out << ",";
 			}
 		}
 	}
-	outFile << "]\n";
+	out << "]\n";
 }
 
 // prints P = {(x, y),(x, y),...}
 void printPoseVectorCode(
+	std::ostream& out,
 	const std::string& label,
 	const std::vector<std::vector<Pose>>& poses
 ) {
-	if (!outFile) throw std::runtime_error("Failed to open output.txt");
-	outFile << label << " {";
+	out << label << " {";
 
 	bool first = true;
 	for (const auto& row : poses) {
 		for (const auto& p : row) {
-			if (!first) outFile << ",";
-			outFile << "("
+			if (!first) out << ",";
+			out << "("
 				<< std::fixed << std::setprecision(6)
 				<< p.x << ", " << p.y << ", " << p.theta
 				<< ")";
@@ -80,22 +73,22 @@ void printPoseVectorCode(
 		}
 	}
 
-	outFile << "};\n";
+	out << "};\n";
 }
 
 // prints V = {(linear, angular),(linear, angular),...}
 void printVelocityVectorCode(
+	std::ostream& out,
 	const std::string& label,
 	const std::vector<std::vector<VelocityLayout>>& vels
 ) {
-	if (!outFile) throw std::runtime_error("Failed to open output.txt");
-	outFile << label << " {";
+	out << label << " {";
 
 	bool first = true;
 	for (const auto& row : vels) {
 		for (const auto& v : row) {
-			if (!first) outFile << ",";
-			outFile << "("
+			if (!first) out << ",";
+			out << "("
 				<< std::fixed << std::setprecision(6)
 				<< v.linear << ", " << v.angular
 				<< ")";
@@ -103,6 +96,6 @@ void printVelocityVectorCode(
 		}
 	}
 
-	outFile << "};\n";
+	out << "};\n";
 }
 }

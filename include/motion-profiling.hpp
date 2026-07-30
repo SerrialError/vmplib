@@ -51,7 +51,9 @@ private:
     size_t step_count_;
 
     // Parameters
-    const std::vector<Point>& control_;
+    // Owned rather than referenced: a profile routinely outlives the expression
+    // that supplied its control points.
+    std::vector<Point> control_;
     float max_lin_vel_;
     float max_lin_accel_;
     float track_width_;
