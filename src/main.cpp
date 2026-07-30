@@ -25,7 +25,12 @@ int main(int argc, char* argv[]) {
             std::cerr << "Usage: ./main --file <filename>\n";
             return 1;
         }
-        loadPaths(filename, controlPoints, keyFrameVelocityList);
-	printVels(controlPoints, keyFrameVelocityList, true);
+        try {
+            loadPaths(filename, controlPoints, keyFrameVelocityList);
+            printVels(controlPoints, keyFrameVelocityList, true);
+        } catch (const std::exception& e) {
+            std::cerr << "error: " << e.what() << "\n";
+            return 1;
+        }
 	return(0);
 }

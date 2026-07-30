@@ -165,6 +165,87 @@ TEST_CASE("findTForS falls back to bisection near a cusp") {
     CHECK(sFunction(cusp, t) == doctest::Approx(total * 0.5f).epsilon(1e-2));
 }
 
+TEST_CASE("projectOntoCurve recovers the parameter of an on-curve point") {
+    for (int i = 0; i <= 10; ++i) {
+        const float expected = i / 10.f;
+        const Pose p = findXandY(kQuarterCircle, expected);
+
+        float residual = -1.f;
+        const float t = projectOntoCurve(kQuarterCircle, p.x, p.y, &residual);
+
+        CAPTURE(expected);
+        CHECK(t == doctest::Approx(expected).epsilon(1e-2));
+        CHECK(residual == doctest::Approx(0.0).epsilon(1e-4));
+    }
+}
+
+TEST_CASE("projectOntoCurve reports how far off-path a point is") {
+    // The quarter circle is centred on the origin with unit radius, so a point
+    // at radius 1.2 along the 45-degree ray sits 0.2 outside the curve.
+    const float diag = 1.2f / std::sqrt(2.f);
+
+    float residual = -1.f;
+    const float t = projectOntoCurve(kQuarterCircle, diag, diag, &residual);
+
+    CHECK(t == doctest::Approx(0.5).epsilon(0.05));
+    CHECK(residual == doctest::Approx(0.2).epsilon(0.02));
+}
+
+TEST_CASE("projectOntoCurve uses y, not just x") {
+    // Both points share an x coordinate but sit at opposite ends of the curve.
+    // An x-only root solve cannot tell them apart.
+    const std::vector<Point> arch = {{0.f, 0.f}, {0.f, 2.f}, {2.f, 2.f}, {2.f, 0.f}};
+
+    const Pose low = findXandY(arch, 0.15f);
+    const Pose high = findXandY(arch, 0.85f);
+
+    const float tLow = projectOntoCurve(arch, low.x, low.y);
+    const float tHigh = projectOntoCurve(arch, high.x, high.y);
+
+    CHECK(tLow == doctest::Approx(0.15).epsilon(0.05));
+    CHECK(tHigh == doctest::Approx(0.85).epsilon(0.05));
+    CHECK(tLow < tHigh);
+}
+
+TEST_CASE("convertToTFrame keeps on-path keyframes ordered along the curve") {
+    std::vector<KeyframeVelocitiesXandY> xy;
+    for (int i = 1; i <= 4; ++i) {
+        const Pose p = findXandY(kQuarterCircle, i / 5.f);
+        xy.push_back({p.x, p.y, 0.5f * i});
+    }
+
+    const std::vector<KeyframeVelocities> t = convertToTFrame(kQuarterCircle, xy);
+    REQUIRE(t.size() == xy.size());
+
+    for (size_t i = 0; i < t.size(); ++i) {
+        CHECK(t[i].velocity == doctest::Approx(xy[i].velocity));
+        CHECK(t[i].t == doctest::Approx((i + 1) / 5.f).epsilon(0.05));
+        if (i > 0) CHECK(t[i].t > t[i - 1].t);
+    }
+}
+
+TEST_CASE("convertToTFrame rejects a keyframe that is off the path") {
+    // 0.2 outside a unit-radius arc, well past the 0.05 tolerance.
+    const float diag = 1.2f / std::sqrt(2.f);
+    const std::vector<KeyframeVelocitiesXandY> xy = {{diag, diag, 1.f}};
+
+    CHECK_THROWS_AS(convertToTFrame(kQuarterCircle, xy), KeyframeError);
+}
+
+TEST_CASE("convertToTFrame rejects keyframes that run backwards along the path") {
+    const Pose early = findXandY(kQuarterCircle, 0.25f);
+    const Pose late = findXandY(kQuarterCircle, 0.75f);
+
+    const std::vector<KeyframeVelocitiesXandY> backwards = {
+        {late.x, late.y, 1.f}, {early.x, early.y, 1.f}};
+    CHECK_THROWS_AS(convertToTFrame(kQuarterCircle, backwards), KeyframeError);
+
+    // The same two keyframes in path order are accepted.
+    const std::vector<KeyframeVelocitiesXandY> forwards = {
+        {early.x, early.y, 1.f}, {late.x, late.y, 1.f}};
+    CHECK_NOTHROW(convertToTFrame(kQuarterCircle, forwards));
+}
+
 TEST_CASE("findXandY matches the Bezier definition at the endpoints") {
     const Pose start = findXandY(kQuarterCircle, 0.f);
     const Pose end = findXandY(kQuarterCircle, 1.f);

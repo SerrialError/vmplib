@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <limits>
+#include <sstream>
 
 // Compute derivative of a cubic Bezier curve
 Point bezierDerivative(const std::vector<Point>& controlPoints, float t) {
@@ -115,103 +116,97 @@ float findTForS(const std::vector<Point>& controlPoints, float sCurrent, float d
 	return 0.5f * (lo + hi);
 }
 
-// Evaluate cubic Bézier component at t
-float bezierComponent(const std::vector<Point>& controlPoints, float t, bool useX) {
-    float u = 1 - t;
-    float c0 = useX ? controlPoints[0].x : controlPoints[0].y;
-    float c1 = useX ? controlPoints[1].x : controlPoints[1].y;
-    float c2 = useX ? controlPoints[2].x : controlPoints[2].y;
-    float c3 = useX ? controlPoints[3].x : controlPoints[3].y;
-
-    return u*u*u * c0 +
-           3*u*u*t * c1 +
-           3*u*t*t * c2 +
-           t*t*t * c3;
+static float distanceSquared(const std::vector<Point>& controlPoints, float t, float x, float y) {
+	const Pose p = findXandY(controlPoints, t);
+	const float dx = p.x - x;
+	const float dy = p.y - y;
+	return dx * dx + dy * dy;
 }
 
-// Try Newton-Raphson starting from tGuess
-bool tryNewtonRaphson(const std::vector<Point>& controlPoints, float target, bool useX, float& t) {
-    float tol = 1e-6f;
-    int maxIter = 20;
+// Seeds for the projection refinement. The squared-distance function is not
+// convex, so a coarse scan is needed to land in the right basin first.
+static constexpr int kProjectionSamples = 64;
 
-    for (int i = 0; i < maxIter; ++i) {
-        float val = bezierComponent(controlPoints, t, useX);
-        Point deriv = bezierDerivative(controlPoints, t);
-        float d = useX ? deriv.x : deriv.y;
-        float f = val - target;
+float projectOntoCurve(const std::vector<Point>& controlPoints, float x, float y,
+                       float* residual) {
+	float bestT = 0.0f;
+	float bestDistSq = distanceSquared(controlPoints, 0.0f, x, y);
+	for (int i = 1; i <= kProjectionSamples; i++) {
+		const float t = static_cast<float>(i) / kProjectionSamples;
+		const float distSq = distanceSquared(controlPoints, t, x, y);
+		if (distSq < bestDistSq) {
+			bestDistSq = distSq;
+			bestT = t;
+		}
+	}
 
-        if (std::fabs(f) < tol) return true;
-        if (std::fabs(d) < 1e-10f) return false;
+	// Refine with Newton on d/dt ||r(t) - p||^2 = 2 (r(t) - p) . r'(t) = 0.
+	float t = bestT;
+	for (int i = 0; i < 20; i++) {
+		const Pose pos = findXandY(controlPoints, t);
+		const Point r1 = bezierDerivative(controlPoints, t);
+		const Point r2 = bezierSecondDerivative(controlPoints, t);
+		const float ex = pos.x - x;
+		const float ey = pos.y - y;
+		const float f = ex * r1.x + ey * r1.y;
+		const float fPrime = r1.x * r1.x + r1.y * r1.y + ex * r2.x + ey * r2.y;
+		if (std::fabs(fPrime) < 1e-12f) {
+			break;
+		}
+		const float tNext = std::clamp(t - f / fPrime, 0.0f, 1.0f);
+		const bool converged = std::fabs(tNext - t) < 1e-6f;
+		t = tNext;
+		if (converged) {
+			break;
+		}
+	}
 
-        t -= f / d;
-        if (t < 0.0f || t > 1.0f) return false; // Stay in bounds
-    }
-    return true;
+	// Newton can walk uphill on a non-convex objective; keep the better root.
+	const float refinedDistSq = distanceSquared(controlPoints, t, x, y);
+	if (refinedDistSq > bestDistSq) {
+		t = bestT;
+	}
+	if (residual != nullptr) {
+		*residual = std::sqrt(distanceSquared(controlPoints, t, x, y));
+	}
+	return t;
 }
 
-// Main function: find t for x(t) = xTarget or y(t) = yTarget
-float findTForComponent(
-    const std::vector<Point>& controlPoints,
-    float target,          // xTarget or yTarget
-    bool useX,             // true for x(t), false for y(t)
-    float prevT     // for disambiguating multiple solutions
-) {
-    std::vector<float> candidates;
-
-    // Try Newton-Raphson from several seeds
-    for (float seed : {0.2f, 0.5f, 0.8f}) {
-        float t = seed;
-        if (tryNewtonRaphson(controlPoints, target, useX, t)) {
-            // Avoid duplicates within tolerance
-            bool exists = false;
-            for (float existing : candidates) {
-                if (std::fabs(existing - t) < 1e-4f) {
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists) candidates.push_back(t);
-        }
-    }
-
-    // Fallback: sample curve if Newton-Raphson fails
-    if (candidates.empty()) {
-        int samples = 100;
-        float bestT = 0.0f;
-        float minDiff = 1e10f;
-        for (int i = 0; i <= samples; ++i) {
-            float t = i / float(samples);
-            float val = bezierComponent(controlPoints, t, useX);
-            float diff = std::fabs(val - target);
-            if (diff < minDiff) {
-                minDiff = diff;
-                bestT = t;
-            }
-        }
-        candidates.push_back(bestT);
-    }
-
-    // Return the t closest to prevT
-    auto closest = std::min_element(candidates.begin(), candidates.end(),
-        [prevT](float a, float b) {
-            return std::fabs(a - prevT) < std::fabs(b - prevT);
-        });
-    
-    return *closest;
-}
+// A keyframe further than this from the curve is treated as a path-authoring
+// mistake rather than a rounding artifact. Metres, i.e. field units.
+static constexpr float kKeyframeOffPathTolerance = 0.05f;
 
 std::vector<KeyframeVelocities> convertToTFrame(
 	const std::vector<Point>& bezierPoints,
 	const std::vector<KeyframeVelocitiesXandY>& keyFrameVelocitiesXY
 ) {
 	std::vector<KeyframeVelocities> keyFrameVelocitiesT;
+	keyFrameVelocitiesT.reserve(keyFrameVelocitiesXY.size());
 	float prevT = 0.0f;
 
 	for (const auto& kf : keyFrameVelocitiesXY) {
-        float t = findTForComponent(bezierPoints, kf.x, true, prevT);
+		float residual = 0.0f;
+		const float t = projectOntoCurve(bezierPoints, kf.x, kf.y, &residual);
+
+		if (residual > kKeyframeOffPathTolerance) {
+			std::ostringstream msg;
+			msg << "keyframe at (" << kf.x << ", " << kf.y << ") is " << residual
+			    << " off the path (tolerance " << kKeyframeOffPathTolerance
+			    << "); its velocity would be applied at t=" << t;
+			throw KeyframeError(msg.str());
+		}
+		// computeKeyframeLimit walks a sorted list, so out-of-order keyframes
+		// would silently bracket the wrong interval.
+		if (t < prevT) {
+			std::ostringstream msg;
+			msg << "keyframe at (" << kf.x << ", " << kf.y << ") projects to t=" << t
+			    << ", behind the previous keyframe at t=" << prevT
+			    << "; keyframes must advance along the path";
+			throw KeyframeError(msg.str());
+		}
 
 		keyFrameVelocitiesT.push_back({kf.velocity, t});
-		prevT = t; // update for next iteration
+		prevT = t;
 	}
 	return keyFrameVelocitiesT;
 }

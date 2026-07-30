@@ -25,12 +25,10 @@ void loadPaths(
         if (!currentPoints.empty()) {
             controlPoints.push_back(currentPoints);
             currentPoints.clear();
-            // if no velocities were specified, push one default
-            if (currentVels.empty()) {
-                keyFrameVelocityList.emplace_back(1, KeyframeVelocitiesXandY{0.f,0.f,0.f});
-            } else {
-                keyFrameVelocityList.push_back(currentVels);
-            }
+            // One entry per segment either way, so the two lists stay aligned.
+            // A segment with no keyframes gets an empty list, not a placeholder
+            // at the origin that would project onto an arbitrary point.
+            keyFrameVelocityList.push_back(currentVels);
             currentVels.clear();
         }
     };
