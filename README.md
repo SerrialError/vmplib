@@ -1,59 +1,131 @@
-# vmplib (VEX Motion Profiling Library)  
+# vmplib (VEX Motion Profiling Library)
 
-## About This Repository  
+A C++17 library for 2D motion profiling on cubic Bézier paths, aimed at VEX
+robotics. Give it a path and a drivetrain, get back a time-parameterised
+trajectory: poses, linear velocity and angular velocity, one sample every `dt`.
 
-Welcome to **vmplib**, a lightweight C++ library for 2D motion profiling tailored to VEX robotics. This repo implements the methods described in the paper paper:
+It implements the methods described in
 
-> *2D Motion Profiling for Competitive Robotics*.  
+> *2D Motion Profiling for Competitive Robotics*
 > [Read the PDF](https://github.com/SerrialError/latex-papers/blob/main/2dmp.pdf)
 
-Use `vmplib` to generate 2d motion profiles for autonomous routines or simulations.
+Profiles are generated **offline** which can then be exported to your realtime code you run on your brain.
 
 ---
 
-## Features  
+## What it does
 
-### Current Implementations  
-- **Cubic Bézier Path Generation**  
-  Compute positions, derivatives, speeds, and curvature on any 2D Bézier spline.  
-- **Arc-Length Parameterization**  
-  Gaussian-quadrature and Newton–Raphson routines to map “distance traveled” ↔︎ spline parameter *t*.  
-- **Trapezoidal & Keyframe Velocity Profiling**  
-  Generate linear and angular velocity profiles with acceleration/deceleration phases or custom keyframes.  
-- **RAMSETE-Style Feedback Simulation**  
-  Simulate closed-loop following with a RAMSETE-inspired controller and first-order motor deadbands.  
+- **Cubic Bézier geometry.** Position, derivatives, parametric speed and signed
+  curvature anywhere on a segment.
+- **Arc-length parameterisation.** 5-point Gauss–Legendre quadrature over
+  composite panels for `s(t)`, and a Newton–Raphson inverse for `t(s)`.
+- **Two-pass velocity profiling.** The velocity ceiling — top speed, the
+  curvature limit , and any keyframes — is sampled up
+  front, then swept backward.
+- **Keyframes.** Pin a target speed to a point on the field. The point is
+  projected onto the curve in 2D, and speeds between keyframes are interpolated
+  in `v²`, which makes each interval a constant-acceleration segment.
+- **Multi-segment paths.** Velocity and the timestep grid stay continuous across
+  segment joins; a step that overshoots the end of one segment carries its
+  leftover arc length into the next.
+- **RAMSETE simulation.** Every trajectory also comes back with what a RAMSETE
+  follower actually achieves tracking it, which is how you tell whether a plan is
+  trackable at all.
 
 ---
 
-## Usage Instructions  
+## Build
 
-### Prerequisites  
-- **GNU Make**  
-- **g++** (or `clang++`) with C++17 support  
-- (Optional) [devenv](https://devenv.sh) & [direnv](https://direnv.net)
-
-### Clone & Build  
+Needs GNU Make and a C++17 compiler (`g++` or `clang++`).
 
 ```bash
 git clone https://github.com/SerrialError/vmplib.git
 cd vmplib
-make          # builds bin/main
+make            # builds bin/main
+make test       # builds and runs the doctest suite
+make clean
 ```
-or with devenv
+
+With [devenv](https://devenv.sh) and [direnv](https://direnv.net):
+
 ```bash
-direnv allow    # auto-loads the shell on cd, or run `devenv shell` manually
+direnv allow    # auto-loads the shell on cd, or run `devenv shell`
 build           # == make all
-run             # builds, then runs bin/main
+run --file examples/path-points.txt
 clean           # == make clean
 ```
 
 ---
 
-## Future Plans
-- **PROS Modules**
+## Command-line use
 
-- **CLI Tool for Path Import/Export**
+```bash
+./bin/main --file examples/path-points.txt
+```
 
-- **Integration with Path-Jerry and other route planners**
+| Flag | Default | Meaning |
+|---|---|---|
+| `--file <path>` | *required* | Path file to profile |
+| `--out <path>` | `output.txt` | Where to write the result |
+| `--format desmos\|code` | `desmos` | Output style |
 
-Contributions, issues, and pull requests are welcome!
+`--format desmos` emits six lists you can paste straight into Desmos:
+
+| Label | Contents |
+|---|---|
+| `X` | planned poses, as `(x, y)` |
+| `L` | planned linear velocity, as `(t, v)` |
+| `A` | planned angular velocity, as `(t, ω)` |
+| `X_r`, `L_r`, `A_r` | the same three for the RAMSETE-followed trajectory |
+
+`--format code` emits `P` and `V` as C++ initialiser lists, for pasting into
+robot code that replays a fixed trajectory.
+
+### Path file format
+
+Plain text, one block per segment. This is the export format of
+[path.jerryio](https://path.jerryio.com), so a file saved from there works
+unmodified.
+
+```
+#PATH-START Path
+#POINTS-START
+-0.586, -0.410          <- four control points per cubic Bezier segment
+-0.586, -0.201
+-0.997,  0.335
+-0.997,  0.544
+#VELOCITIES-START
+-0.700,  0.100, 0.3     <- x, y, target speed (m/s)
+#PATH.JERRYIO-DATA {...}
+```
+
+`#VELOCITIES-START` may be empty. Each keyframe is an `(x, y)` point on the
+field plus the speed you want there; the point is projected onto the curve
+rather than matched by `x` alone, so paths that double back work correctly.
+
+Units are default SI units throughout.
+
+---
+
+### Tuning
+
+`ProfileConfig` defaults to the robot this project was originally tuned against.
+Override the fields rather than editing the source.
+
+| Field | Default |
+|---|---|
+| `maxVelocity` | 1.8885 m/s |
+| `maxAccel` | 4.1220 m/s² |
+| `trackWidth` | 0.2951 m |
+| `ramseteB` | 2.0 m⁻² |
+| `ramseteZeta` | 0.7 |
+| `dt` | 0.01 s |
+
+---
+
+## Future plans
+
+- CLI for path import/export
+- Tighter integration with path.jerryio and other route planners
+
+Contributions, issues, and pull requests are welcome.
