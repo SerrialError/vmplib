@@ -38,7 +38,6 @@ private:
     float prev_t_;
     float time_accum_;
     float cur_speed_;
-    size_t prev_keyframe_idx_;
     size_t step_count_;
 
     // Parameters
@@ -56,14 +55,29 @@ private:
     // Backstop so a non-advancing profile fails fast instead of looping forever.
     size_t max_steps_;
 
+    // The velocity limit curve, sampled on a uniform grid in the Bezier
+    // parameter. limit_v_ is the fastest the robot may travel at limit_s_ and
+    // still respect the curvature and keyframe ceilings ahead of it without
+    // ever exceeding max_lin_accel_ to slow down. Built up front because that
+    // question cannot be answered from the current position alone; the
+    // acceleration half of the profile is applied online in step().
+    std::vector<float> limit_t_;
+    std::vector<float> limit_s_;
+    std::vector<float> limit_v_;
+
     // Accumulated output
     std::vector<Pose> poses_;
     std::vector<VelocityLayout> velocities_;
 
     // Helper methods
+    void buildVelocityLimits();
     float computeCurvatureVelocityLimit(float t) const;
     float computeAccelerationLimit() const;
-    float computeBrakingLimit(float s) const;
-    float computeKeyframeLimit();
-    float findNextT(float s0, float deltaS) const;
+    float keyframeCeiling(float s, const std::vector<float>& keyframeS, size_t& idx) const;
+
+    // Conversions against the sampled table above. Using it for both directions
+    // keeps every arc length in the profiler on one consistent metric.
+    float arcLengthAt(float t) const;
+    float parameterAt(float s) const;
+    float velocityAt(float s) const;
 };
