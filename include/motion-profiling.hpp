@@ -2,8 +2,6 @@
 
 #include <vector>
 #include "types.hpp"
-#include "bezier.hpp"
-#include "motion-utils.hpp"
 
 class TrapezoidalProfile {
 public:

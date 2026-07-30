@@ -1,18 +1,25 @@
 // ramsete.cpp
 #include "ramsete.hpp"
+#include "motion-utils.hpp"
 #include <cmath>
 
-using namespace MotionUtils;
+using MotionUtils::wrapAngle;
+
+namespace {
+// Enough for a few seconds of tracking at a typical dt, so the common case
+// never reallocates.
+constexpr size_t kExpectedSamples = 1000;
+} // namespace
 
 RamseteFollower::RamseteFollower(const std::vector<Pose>& refPoses,
                                  const std::vector<VelocityLayout>& refVels,
-				 float trackWidth,
+                                 float trackWidth,
                                  float bGain,
                                  float zetaGain,
-				 float timeAccum,
+                                 float timeAccum,
                                  float dt,
-				 bool reverse,
-				 std::optional<Pose> initialPose)
+                                 bool reverse,
+                                 std::optional<Pose> initialPose)
     : track_width_(trackWidth),
       b_gain_(bGain),
       zeta_gain_(zetaGain),
@@ -24,8 +31,8 @@ RamseteFollower::RamseteFollower(const std::vector<Pose>& refPoses,
       ref_poses_ptr_(&refPoses),
       ref_vels_ptr_(&refVels)
 {
-    executed_poses_.reserve(1000);
-    executed_vels_.reserve(1000);
+    executed_poses_.reserve(kExpectedSamples);
+    executed_vels_.reserve(kExpectedSamples);
     current_pose_ = initialPose.value_or(refPoses.front());
     if (reverse_) {
         current_pose_.theta = wrapAngle(current_pose_.theta + static_cast<float>(M_PI));

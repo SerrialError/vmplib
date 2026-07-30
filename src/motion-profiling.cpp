@@ -1,9 +1,8 @@
 #include "motion-profiling.hpp"
+#include "bezier.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
-
-using namespace MotionUtils;
 
 namespace {
 // Samples used to build the velocity limit curve. The grid is uniform in the
@@ -11,6 +10,14 @@ namespace {
 // 256 keeps that spacing well under one timestep of travel for the path lengths
 // and speeds this library targets.
 constexpr int kLimitSamples = 256;
+
+// A profile that stops advancing would otherwise loop forever. No single
+// segment this library is meant to plan takes anywhere near a minute to drive.
+constexpr float kWatchdogSeconds = 60.0f;
+
+// Enough for a few seconds of travel at a typical dt, so the common case never
+// reallocates.
+constexpr size_t kExpectedSamples = 1000;
 } // namespace
 
 TrapezoidalProfile::TrapezoidalProfile(
@@ -41,7 +48,7 @@ TrapezoidalProfile::TrapezoidalProfile(
       dt_(dt),
       keyframes_(keyframes),
       total_length_(0.0f),
-      max_steps_(static_cast<size_t>(60.0f / dt))
+      max_steps_(static_cast<size_t>(kWatchdogSeconds / dt))
 {
     buildVelocityLimits();
 
@@ -54,8 +61,8 @@ TrapezoidalProfile::TrapezoidalProfile(
     // velocity; the backward pass has already worked out what it can do.
     cur_speed_ = std::min(cur_speed_, velocityAt(s_current_));
 
-    poses_.reserve(1000);
-    velocities_.reserve(1000);
+    poses_.reserve(kExpectedSamples);
+    velocities_.reserve(kExpectedSamples);
 }
 
 float TrapezoidalProfile::overshootArcLength() const {

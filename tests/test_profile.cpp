@@ -3,6 +3,7 @@
 #include "motion-profiling.hpp"
 #include "ramsete.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 

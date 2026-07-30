@@ -1,4 +1,5 @@
 #include "motion-profiler.hpp"
+#include "bezier.hpp"             // convertToTFrame
 #include "motion-profiling.hpp"   // TrapezoidalProfile
 #include "ramsete.hpp"            // RamseteFollower
 #include <algorithm>
