@@ -4,7 +4,6 @@
 #include <optional>
 #include <vector>
 #include "types.hpp"
-#include "motion-utils.hpp"
 
 class RamseteFollower {
 public:
@@ -13,13 +12,13 @@ public:
     // start the robot off the path.
     RamseteFollower(const std::vector<Pose>& refPoses,
                     const std::vector<VelocityLayout>& refVels,
-		    float trackWidth,
+                    float trackWidth,
                     float bGain,
                     float zetaGain,
-		    float timeAccum,
+                    float timeAccum,
                     float dt,
-		    bool reverse,
-		    std::optional<Pose> initialPose = std::nullopt);
+                    bool reverse,
+                    std::optional<Pose> initialPose = std::nullopt);
 
     // Advance one timestep. Returns the new robot Pose & velocity.
     VelocityLayout step();
