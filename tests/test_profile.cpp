@@ -106,18 +106,37 @@ TEST_CASE("profile on a path shorter than the braking distance terminates") {
     CHECK(profile.getPoses().size() > 1);
 }
 
-TEST_CASE("profile brakes to the exit velocity by the end of the path") {
-    // The final sample is taken up to one step short of the end, where the
-    // braking ramp still permits v = sqrt(2*a*deltaS) with deltaS = v*dt.
-    // Solving gives a floor of 2*a*dt, which bounds the overshoot.
-    const float tolerance = 2.0f * kMaxAccel * kDt;
-
+TEST_CASE("profile ends at exactly the exit velocity") {
+    // Not merely close to it: these samples are fed straight to a drivetrain,
+    // so a residual here is a robot still rolling once the segment runs out.
     for (float exitVel : {0.0f, 0.5f}) {
         CAPTURE(exitVel);
         TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, exitVel);
         REQUIRE(runToCompletion(profile));
-        CHECK(profile.getVelocities().back().linear <= exitVel + tolerance);
+        CHECK(profile.getVelocities().back().linear == doctest::Approx(exitVel));
     }
+}
+
+TEST_CASE("the final angular velocity matches the exit velocity") {
+    // omega = kappa * v holds at the endpoint like everywhere else, so pinning
+    // the linear half without the angular half would leave the robot turning.
+    const float exitVel = 0.5f;
+    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, exitVel);
+    REQUIRE(runToCompletion(profile));
+
+    const float kappaEnd = signedCurvature(kLongPath, 1.0f);
+    CHECK(profile.getVelocities().back().angular == doctest::Approx(kappaEnd * exitVel));
+}
+
+TEST_CASE("a curvature ceiling at the endpoint overrides a faster exit velocity") {
+    // The hairpin's exit is tighter than kMaxVel allows, so asking to leave at
+    // full speed cannot be honoured; the endpoint takes the lower of the two.
+    TrapezoidalProfile profile = makeProfile(kHairpin, 0.f, kMaxVel);
+    REQUIRE(runToCompletion(profile));
+
+    const float curvatureLimit = kMaxVel / (1.0f + unsignedCurvature(kHairpin, 1.0f) *
+                                                       kTrackWidth / 2.0f);
+    CHECK(profile.getVelocities().back().linear <= curvatureLimit + 1e-4f);
 }
 
 TEST_CASE("braking limit keeps the profile stoppable at every point") {
@@ -151,11 +170,16 @@ TEST_CASE("the final step reports how far it ran past the end of the segment") {
     TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
-    const float overshoot = profile.overshootArcLength();
-    // A step advances by v*dt, so it cannot land more than that past the end.
-    const float lastStep = profile.getVelocities().back().linear * kDt;
-    CHECK(overshoot >= 0.f);
-    CHECK(overshoot <= lastStep + 1e-5f);
+    const auto& vels = profile.getVelocities();
+    REQUIRE(vels.size() > 1);
+
+    // A step advances by v*dt. The speed that drove the final step is no longer
+    // in the output, since the endpoint sample reports the exit velocity
+    // instead, but it was at most one acceleration step above the sample
+    // before it.
+    const float lastStep = (vels[vels.size() - 2].linear + kMaxAccel * kDt) * kDt;
+    CHECK(profile.overshootArcLength() >= 0.f);
+    CHECK(profile.overshootArcLength() <= lastStep + 1e-5f);
 }
 
 TEST_CASE("a segment resumed with a carry-over starts that far along") {
@@ -276,10 +300,18 @@ TEST_CASE("commanded velocity respects the acceleration limit") {
 
     const auto& vels = profile.getVelocities();
     const float maxDelta = 2.0f * kMaxAccel * kDt;
-    for (size_t i = 1; i < vels.size(); ++i) {
+    for (size_t i = 1; i + 1 < vels.size(); ++i) {
         CAPTURE(i);
         CHECK(std::fabs(vels[i].linear - vels[i - 1].linear) <= maxDelta + 1e-4f);
     }
+
+    // The endpoint is exempt: it reports the exit velocity rather than the
+    // speed of the step that reached it, so the last drop covers the residual
+    // the discretization left as well as its own step. Both are bounded by the
+    // 2*a*dt floor above, hence twice it. Arriving at rest is worth one
+    // timestep of over-braking; the alternative is a robot that never stops.
+    CHECK(std::fabs(vels.back().linear - vels[vels.size() - 2].linear) <=
+          2.0f * maxDelta + 1e-4f);
 }
 
 // --- RAMSETE ---------------------------------------------------------------

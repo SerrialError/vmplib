@@ -248,11 +248,23 @@ void TrapezoidalProfile::step() {
     overshoot_ = std::max(0.0f, s_target - total_length_);
     const float next_t = parameterAt(s_target);
 
+    // Every sample carries the speed held over the step that reaches it, which
+    // on a braking ramp still sits above the speed due at the point it lands
+    // on. Harmless mid-segment, but the sample on the endpoint is the last
+    // thing a drivetrain is told, so a segment meant to arrive at rest would
+    // leave it rolling. The endpoint is instead evaluated where it sits: the
+    // same minimum as any other sample, taken at the end of the segment rather
+    // than at the start of the step. The acceleration cap stays in force, so an
+    // exit velocity the robot cannot climb to in one step is not invented here.
+    const float sample_linear = (next_t >= 1.0f)
+                                    ? std::min(velocityAt(total_length_), computeAccelerationLimit())
+                                    : desired_linear;
+
     const float kappa = signedCurvature(control_, next_t);
     poses_.push_back(findXandY(control_, next_t));
     velocities_.push_back(
-        VelocityLayout{ desired_linear, kappa * desired_linear, time_accum_ });
+        VelocityLayout{ sample_linear, kappa * sample_linear, time_accum_ });
 
     prev_t_ = next_t;
-    cur_speed_ = desired_linear;
+    cur_speed_ = sample_linear;
 }
