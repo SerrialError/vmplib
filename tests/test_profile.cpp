@@ -144,6 +144,50 @@ TEST_CASE("braking limit keeps the profile stoppable at every point") {
     }
 }
 
+// --- Segment joins ---------------------------------------------------------
+
+TEST_CASE("the final step reports how far it ran past the end of the segment") {
+    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    REQUIRE(runToCompletion(profile));
+
+    const float overshoot = profile.overshootArcLength();
+    // A step advances by v*dt, so it cannot land more than that past the end.
+    const float lastStep = profile.getVelocities().back().linear * kDt;
+    CHECK(overshoot >= 0.f);
+    CHECK(overshoot <= lastStep + 1e-5f);
+}
+
+TEST_CASE("a segment resumed with a carry-over starts that far along") {
+    TrapezoidalProfile first = makeProfile(kLongPath, 0.f, 0.f);
+    REQUIRE(runToCompletion(first));
+    const float carry = first.overshootArcLength();
+    REQUIRE(carry > 0.f);
+
+    // Standing in for the next segment of a multi-segment path: it must pick up
+    // the travel the previous segment's last timestep already committed to,
+    // rather than restarting from its own origin.
+    TrapezoidalProfile second(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.0f, {},
+                              false, kDt, carry);
+    second.start();
+
+    const Pose begun = second.getPoses().front();
+    const Pose origin = findXandY(kLongPath, 0.0f);
+    const float advanced = std::sqrt((begun.x - origin.x) * (begun.x - origin.x) +
+                                     (begun.y - origin.y) * (begun.y - origin.y));
+    CHECK(advanced == doctest::Approx(carry).epsilon(0.05));
+}
+
+TEST_CASE("a carry-over longer than the segment passes straight through it") {
+    const float total = sFunction(kShortPath, 1.0f);
+    const float carry = total + 0.05f;
+
+    TrapezoidalProfile profile(kShortPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.5f, 0.0f, {},
+                               false, kDt, carry);
+    CHECK(profile.isFinished());
+    // The unspent remainder has to keep going, not vanish at the join.
+    CHECK(profile.overshootArcLength() == doctest::Approx(0.05f).epsilon(1e-2));
+}
+
 // --- Keyframes -------------------------------------------------------------
 
 TEST_CASE("keyframes cap velocity at the requested arc positions") {
