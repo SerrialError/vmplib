@@ -106,18 +106,37 @@ TEST_CASE("profile on a path shorter than the braking distance terminates") {
     CHECK(profile.getPoses().size() > 1);
 }
 
-TEST_CASE("profile brakes to the exit velocity by the end of the path") {
-    // The final sample is taken up to one step short of the end, where the
-    // braking ramp still permits v = sqrt(2*a*deltaS) with deltaS = v*dt.
-    // Solving gives a floor of 2*a*dt, which bounds the overshoot.
-    const float tolerance = 2.0f * kMaxAccel * kDt;
-
+TEST_CASE("profile ends at exactly the exit velocity") {
+    // Not merely close to it: these samples are fed straight to a drivetrain,
+    // so a residual here is a robot still rolling once the segment runs out.
     for (float exitVel : {0.0f, 0.5f}) {
         CAPTURE(exitVel);
         TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, exitVel);
         REQUIRE(runToCompletion(profile));
-        CHECK(profile.getVelocities().back().linear <= exitVel + tolerance);
+        CHECK(profile.getVelocities().back().linear == doctest::Approx(exitVel));
     }
+}
+
+TEST_CASE("the final angular velocity matches the exit velocity") {
+    // omega = kappa * v holds at the endpoint like everywhere else, so pinning
+    // the linear half without the angular half would leave the robot turning.
+    const float exitVel = 0.5f;
+    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, exitVel);
+    REQUIRE(runToCompletion(profile));
+
+    const float kappaEnd = signedCurvature(kLongPath, 1.0f);
+    CHECK(profile.getVelocities().back().angular == doctest::Approx(kappaEnd * exitVel));
+}
+
+TEST_CASE("a curvature ceiling at the endpoint overrides a faster exit velocity") {
+    // The hairpin's exit is tighter than kMaxVel allows, so asking to leave at
+    // full speed cannot be honoured; the endpoint takes the lower of the two.
+    TrapezoidalProfile profile = makeProfile(kHairpin, 0.f, kMaxVel);
+    REQUIRE(runToCompletion(profile));
+
+    const float curvatureLimit = kMaxVel / (1.0f + unsignedCurvature(kHairpin, 1.0f) *
+                                                       kTrackWidth / 2.0f);
+    CHECK(profile.getVelocities().back().linear <= curvatureLimit + 1e-4f);
 }
 
 TEST_CASE("braking limit keeps the profile stoppable at every point") {
@@ -137,11 +156,12 @@ TEST_CASE("braking limit keeps the profile stoppable at every point") {
         travelled += std::sqrt(dx * dx + dy * dy);
 
         const float remaining = std::max(0.f, total - travelled);
+        // The continuous ramp is the ceiling. The profile rides the discrete
+        // one, which sits strictly below it, so no discretization slack is
+        // needed here -- only room for the chord-length approximation of
+        // travelled above.
         const float stoppable = std::sqrt(2.0f * kMaxAccel * remaining);
-        // Same 2*a*dt discretization floor as the exit-velocity test: the
-        // sample is taken before the step it commands, so the last few
-        // samples sit one step's worth of travel above the ideal ramp.
-        CHECK(vels[i].linear <= stoppable + 2.0f * kMaxAccel * kDt);
+        CHECK(vels[i].linear <= stoppable + 1e-3f);
     }
 }
 
@@ -151,11 +171,14 @@ TEST_CASE("the final step reports how far it ran past the end of the segment") {
     TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
-    const float overshoot = profile.overshootArcLength();
-    // A step advances by v*dt, so it cannot land more than that past the end.
-    const float lastStep = profile.getVelocities().back().linear * kDt;
-    CHECK(overshoot >= 0.f);
-    CHECK(overshoot <= lastStep + 1e-5f);
+    const auto& vels = profile.getVelocities();
+    REQUIRE(vels.size() > 1);
+
+    // A step advances by v*dt at the speed held where it began, which is what
+    // the previous sample carries.
+    const float lastStep = vels[vels.size() - 2].linear * kDt;
+    CHECK(profile.overshootArcLength() >= 0.f);
+    CHECK(profile.overshootArcLength() <= lastStep + 1e-5f);
 }
 
 TEST_CASE("a segment resumed with a carry-over starts that far along") {
@@ -266,19 +289,55 @@ TEST_CASE("commanded velocity respects the acceleration limit") {
     // segment. Without the backward pass the profile stepped off the ceiling
     // in a single sample; with it, the profile brakes into the corner.
     //
-    // The bound is 2*a*dt rather than a*dt because each sample commands the
-    // speed at the *start* of its step while the step advances by v*dt. On the
-    // braking ramp that gives dv = v - sqrt(v^2 - 2*a*v*dt), which tends to
-    // a*dt for large v and peaks at 2*a*dt when v reaches 2*a*dt. Same
-    // discretization floor as the exit-velocity and stoppability tests.
+    // a*dt with no discretization slack on top, and the endpoint is not exempt:
+    // the limit curve is the discrete braking ramp, so riding it down spends
+    // exactly a*dt per step and leaves at most that much for the final sample.
+    // A looser bound here would let the profile end with a step no drivetrain
+    // could execute, which is what it used to do.
     TrapezoidalProfile profile = makeProfile(kHairpin, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const auto& vels = profile.getVelocities();
-    const float maxDelta = 2.0f * kMaxAccel * kDt;
+    const float maxDelta = kMaxAccel * kDt;
     for (size_t i = 1; i < vels.size(); ++i) {
         CAPTURE(i);
         CHECK(std::fabs(vels[i].linear - vels[i - 1].linear) <= maxDelta + 1e-4f);
+    }
+}
+
+TEST_CASE("the acceleration limit holds across every kind of profile") {
+    // The final step is where the old continuous ramp broke down, and it only
+    // shows up once a profile actually has to land on its exit velocity. Sweep
+    // the shapes that reach it differently: braking from cruise, from a start
+    // faster than the path allows, on a path too short to brake in, and into a
+    // non-zero exit.
+    const float maxDelta = kMaxAccel * kDt + 1e-4f;
+
+    struct Case {
+        const char* name;
+        const std::vector<Point>* path;
+        float startVel;
+        float exitVel;
+    };
+    const Case cases[] = {
+        {"long, rest to rest", &kLongPath, 0.f, 0.f},
+        {"long, rest to 0.5", &kLongPath, 0.f, 0.5f},
+        {"long, cruising to rest", &kLongPath, kMaxVel, 0.f},
+        {"shorter than the braking distance", &kShortPath, 0.f, 0.f},
+        {"hairpin", &kHairpin, 0.f, 0.f},
+    };
+
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        TrapezoidalProfile profile = makeProfile(*c.path, c.startVel, c.exitVel);
+        REQUIRE(runToCompletion(profile));
+
+        const auto& vels = profile.getVelocities();
+        for (size_t i = 1; i < vels.size(); ++i) {
+            CAPTURE(i);
+            CHECK(std::fabs(vels[i].linear - vels[i - 1].linear) <= maxDelta);
+        }
+        CHECK(vels.back().linear == doctest::Approx(c.exitVel));
     }
 }
 
