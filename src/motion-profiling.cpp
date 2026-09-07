@@ -50,6 +50,9 @@ TrapezoidalProfile::TrapezoidalProfile(
       total_length_(0.0f),
       max_steps_(static_cast<size_t>(kWatchdogSeconds / dt))
 {
+    // The profiler reaches into control_[0..3] throughout; refuse a malformed
+    // segment here rather than let a bezier* routine read past its end.
+    requireCubicSegment(control_);
     buildVelocityLimits();
 
     prev_t_ = parameterAt(startArcLength);

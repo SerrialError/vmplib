@@ -4,6 +4,21 @@
 #include <stdexcept>
 #include <string>
 
+// Thrown for a path segment whose control-point count is not one this library
+// can evaluate. Every bezier* routine indexes controlPoints[0..3]
+// unconditionally, so a segment with the wrong count is a memory-safety bug
+// rather than a numerical one; it is caught here at the boundary before any of
+// them run.
+class SegmentError : public std::runtime_error {
+public:
+    explicit SegmentError(const std::string& what) : std::runtime_error(what) {}
+};
+
+// Throws SegmentError unless controlPoints holds exactly the four points a cubic
+// Bezier segment requires. Call this before handing a segment to any bezier*
+// routine or to a profile.
+void requireCubicSegment(const std::vector<Point>& controlPoints);
+
 Point bezierDerivative(const std::vector<Point>& controlPoints, float t);
 Point bezierSecondDerivative(const std::vector<Point>& controlPoints, float t);
 float speed(const std::vector<Point>& controlPoints, float t);

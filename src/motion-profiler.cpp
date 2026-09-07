@@ -20,6 +20,13 @@ Trajectory generateTrajectory(
     Trajectory out;
     float timeAccum = 0.0f;
 
+    // Refuse every malformed segment up front, before any planning runs, so the
+    // caller gets one clear error instead of a heap overflow deep in a bezier*
+    // routine. Each downstream consumer re-checks its own input as well.
+    for (const auto& segment : controlPoints) {
+        requireCubicSegment(segment);
+    }
+
     // Convert every segment's (x,y,velocity) keyframes to (velocity, t) up
     // front. A segment's exit velocity depends on the *next* segment's
     // keyframes, which cannot be resolved one segment at a time.

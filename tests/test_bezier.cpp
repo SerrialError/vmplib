@@ -246,6 +246,23 @@ TEST_CASE("convertToTFrame rejects keyframes that run backwards along the path")
     CHECK_NOTHROW(convertToTFrame(kQuarterCircle, forwards));
 }
 
+TEST_CASE("requireCubicSegment rejects a segment without exactly four points") {
+    // Every bezier* routine indexes controlPoints[0..3] unconditionally, so a
+    // segment with the wrong count is a heap overflow, not a numerical error.
+    CHECK_THROWS_AS(requireCubicSegment({}), SegmentError);
+    CHECK_THROWS_AS(requireCubicSegment({{0.f, 0.f}, {1.f, 0.f}, {2.f, 0.f}}), SegmentError);
+    CHECK_THROWS_AS(
+        requireCubicSegment({{0.f, 0.f}, {1.f, 0.f}, {2.f, 0.f}, {3.f, 0.f}, {4.f, 0.f}}),
+        SegmentError);
+    CHECK_NOTHROW(requireCubicSegment(kStraight));
+}
+
+TEST_CASE("convertToTFrame rejects a segment without exactly four points") {
+    const std::vector<Point> triangle = {{0.f, 0.f}, {1.f, 0.f}, {2.f, 0.f}};
+    const std::vector<KeyframeVelocitiesXandY> xy = {{0.f, 0.f, 1.f}};
+    CHECK_THROWS_AS(convertToTFrame(triangle, xy), SegmentError);
+}
+
 TEST_CASE("findXandY matches the Bezier definition at the endpoints") {
     const Pose start = findXandY(kQuarterCircle, 0.f);
     const Pose end = findXandY(kQuarterCircle, 1.f);

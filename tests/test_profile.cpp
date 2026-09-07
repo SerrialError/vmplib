@@ -47,6 +47,13 @@ bool runToCompletion(TrapezoidalProfile& profile) {
 
 } // namespace
 
+TEST_CASE("profile construction rejects a segment without exactly four points") {
+    // The profiler reaches into controlPoints[0..3] the moment it builds the
+    // velocity limits, so a malformed segment must be refused at the boundary.
+    const std::vector<Point> triangle = {{0.f, 0.f}, {1.f, 0.f}, {2.f, 0.f}};
+    CHECK_THROWS_AS(makeProfile(triangle, 0.f, 0.f), SegmentError);
+}
+
 TEST_CASE("profile on a normal-length path terminates") {
     TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));

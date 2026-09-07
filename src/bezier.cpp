@@ -7,6 +7,19 @@
 #include <limits>
 #include <sstream>
 
+// A cubic Bezier segment is exactly four control points; anything else would
+// make the bezier* routines index past the end of the vector.
+static constexpr size_t kCubicControlPoints = 4;
+
+void requireCubicSegment(const std::vector<Point>& controlPoints) {
+	if (controlPoints.size() != kCubicControlPoints) {
+		std::ostringstream msg;
+		msg << "cubic Bezier segment needs exactly " << kCubicControlPoints
+		    << " control points, got " << controlPoints.size();
+		throw SegmentError(msg.str());
+	}
+}
+
 // Compute derivative of a cubic Bezier curve
 Point bezierDerivative(const std::vector<Point>& controlPoints, float t) {
 	float dx = 3 * (1 - t) * (1 - t) * (controlPoints[1].x - controlPoints[0].x) +
@@ -180,6 +193,8 @@ std::vector<KeyframeVelocities> convertToTFrame(
 	const std::vector<Point>& bezierPoints,
 	const std::vector<KeyframeVelocitiesXandY>& keyFrameVelocitiesXY
 ) {
+	requireCubicSegment(bezierPoints);
+
 	std::vector<KeyframeVelocities> keyFrameVelocitiesT;
 	keyFrameVelocitiesT.reserve(keyFrameVelocitiesXY.size());
 	float prevT = 0.0f;
