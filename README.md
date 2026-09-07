@@ -123,6 +123,41 @@ Override the fields rather than editing the source.
 
 ---
 
+## 1D profiling
+
+The same velocity profiler drives a single axis — a straight drive, a turret, a
+lift — without any of the 2D path machinery. `generateScalarProfile`
+(`scalar-profiler.hpp`) takes a distance and motion limits and returns one
+`(position, velocity, accel, time)` sample every `dt`:
+
+```cpp
+#include "scalar-profiler.hpp"
+
+const ScalarProfileConfig config{ /*maxVelocity=*/1.5, /*maxAccel=*/3.0, /*dt=*/0.01 };
+
+// Optional: pin a velocity to a distance along the move (need not be pre-sorted).
+const std::vector<ScalarKeyframe> keyframes = {{1.5, 0.0}, {0.4, 1.0}, {1.5, 2.0}};
+
+const std::vector<ScalarSample> samples =
+    generateScalarProfile(/*distance=*/2.0, config, /*startVel=*/0.0, /*endVel=*/0.0,
+                          keyframes);
+```
+
+It is **unit-agnostic**: distance, velocity, and acceleration may be metres,
+inches, or radians, as long as they are consistent. Gearing and motor
+conversions stay in your robot code. See `examples/scalar_profile_demo.cpp`:
+
+```bash
+make example
+./bin/scalar-profile-demo
+```
+
+The 2D `generateTrajectory` and this 1D API share the same underlying
+`ScalarProfile` core, so both land exactly on their exit velocity and never
+exceed the acceleration limit — including on the final step.
+
+---
+
 ## Future plans
 
 - CLI for path import/export
