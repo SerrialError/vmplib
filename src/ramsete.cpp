@@ -95,16 +95,22 @@ VelocityLayout RamseteFollower::step() {
     float w_real = w_ref + k * error_theta
                  + b_gain_ * v_ref * sinc(error_theta) * error_y;
 
-    // Advance time & pose
+    // Log the pre-step pose. This sample is the robot's state *while* tracking
+    // reference sample index_, so it is stamped with that reference's own time
+    // (refV.time) and executed[i] lines up with planned[i] in both pose and
+    // time -- for every segment, not just the first. Logging after integration
+    // instead put executed[i] a whole step ahead, on planned[i+1], and stamped
+    // it with planned[i+1]'s time.
+    const VelocityLayout sample{ v_real, w_real, refV.time };
+    executed_poses_.push_back(current_pose_);
+    executed_vels_.push_back(sample);
+
+    // Advance time & pose for the next step.
     time_accum_ += dt_;
     current_pose_.x += v_real * std::cos(current_pose_.theta) * dt_;
     current_pose_.y += v_real * std::sin(current_pose_.theta) * dt_;
     current_pose_.theta = wrapAngle(current_pose_.theta + w_real * dt_);
 
-    // Log
-    executed_poses_.push_back(current_pose_);
-    executed_vels_.push_back({ v_real, w_real, time_accum_ });
-
     ++index_;
-    return { v_real, w_real, time_accum_ };
+    return sample;
 }

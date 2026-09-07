@@ -350,6 +350,43 @@ TEST_CASE("the acceleration limit holds across every kind of profile") {
 
 // --- RAMSETE ---------------------------------------------------------------
 
+TEST_CASE("ramsete followed samples align with the planned samples by index") {
+    // The follower tracks planned sample i on the step that produces executed
+    // sample i, so the two must share an index: same timestamp, same pose (to
+    // within a step of tracking error). The old code logged the pose *after*
+    // integrating, so executed[i] landed on planned[i+1] and every followed
+    // sample carried the next planned sample's time -- planned sample 1 and
+    // followed sample 0 both stamped t = dt.
+    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    REQUIRE(runToCompletion(profile));
+
+    const auto& planned = profile.getPoses();
+    const auto& plannedVels = profile.getVelocities();
+
+    RamseteFollower follower(planned, plannedVels, kTrackWidth, 2.0f, 0.7f, 0.0f, kDt, false);
+    int steps = 0;
+    while (!follower.isFinished() && steps < kStepCap) {
+        follower.step();
+        ++steps;
+    }
+    REQUIRE(follower.isFinished());
+
+    const auto& followed = follower.getExecutedPoses();
+    const auto& followedVels = follower.getExecutedVelocities();
+    REQUIRE(followed.size() == planned.size());
+
+    for (size_t i = 0; i < planned.size(); ++i) {
+        CAPTURE(i);
+        // Same timestamp as the planned sample it tracks.
+        CHECK(followedVels[i].time == doctest::Approx(plannedVels[i].time).epsilon(1e-6));
+        // Starting on the reference, followed[i] sits on planned[i], not a whole
+        // step ahead on planned[i+1].
+        const float dxHere = followed[i].x - planned[i].x;
+        const float dyHere = followed[i].y - planned[i].y;
+        CHECK(std::sqrt(dxHere * dxHere + dyHere * dyHere) < 0.01f);
+    }
+}
+
 TEST_CASE("ramsete reproduces the reference when it starts on it") {
     TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
