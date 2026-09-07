@@ -26,8 +26,8 @@ const std::vector<Point> kShortPath = {
 const std::vector<Point> kHairpin = {
     {0.f, 0.f}, {1.2f, 0.f}, {1.2f, 0.25f}, {0.f, 0.25f}};
 
-TrapezoidalProfile makeProfile(const std::vector<Point>& pts, float startVel, float endVel) {
-    return TrapezoidalProfile(pts, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, startVel, endVel, {},
+BezierPathProfile makeProfile(const std::vector<Point>& pts, float startVel, float endVel) {
+    return BezierPathProfile(pts, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, startVel, endVel, {},
                               false, kDt);
 }
 
@@ -35,7 +35,7 @@ TrapezoidalProfile makeProfile(const std::vector<Point>& pts, float startVel, fl
 // than hanging the test binary.
 constexpr int kStepCap = 20000;
 
-bool runToCompletion(TrapezoidalProfile& profile) {
+bool runToCompletion(BezierPathProfile& profile) {
     profile.start();
     int steps = 0;
     while (!profile.isFinished() && steps < kStepCap) {
@@ -55,14 +55,14 @@ TEST_CASE("profile construction rejects a segment without exactly four points") 
 }
 
 TEST_CASE("profile on a normal-length path terminates") {
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
     CHECK(profile.getPoses().size() > 1);
     CHECK(profile.getVelocities().size() == profile.getPoses().size());
 }
 
 TEST_CASE("profile never exceeds the maximum linear velocity") {
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     for (const auto& v : profile.getVelocities()) {
@@ -72,7 +72,7 @@ TEST_CASE("profile never exceeds the maximum linear velocity") {
 }
 
 TEST_CASE("profile timestamps advance by exactly dt") {
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const auto& vels = profile.getVelocities();
@@ -82,7 +82,7 @@ TEST_CASE("profile timestamps advance by exactly dt") {
 }
 
 TEST_CASE("profile ends at the end of the path") {
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const Pose last = profile.getPoses().back();
@@ -91,7 +91,7 @@ TEST_CASE("profile ends at the end of the path") {
 }
 
 TEST_CASE("angular velocity is consistent with curvature and linear velocity") {
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     // omega = kappa * v, so |omega| must stay bounded by the worst-case
@@ -108,7 +108,7 @@ TEST_CASE("angular velocity is consistent with curvature and linear velocity") {
 TEST_CASE("profile on a path shorter than the braking distance terminates") {
     // kShortPath is 0.30 m; braking from kMaxVel to rest needs 0.43 m, so the
     // braking limit is active from the very first step.
-    TrapezoidalProfile profile = makeProfile(kShortPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kShortPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
     CHECK(profile.getPoses().size() > 1);
 }
@@ -118,7 +118,7 @@ TEST_CASE("profile ends at exactly the exit velocity") {
     // so a residual here is a robot still rolling once the segment runs out.
     for (float exitVel : {0.0f, 0.5f}) {
         CAPTURE(exitVel);
-        TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, exitVel);
+        BezierPathProfile profile = makeProfile(kLongPath, 0.f, exitVel);
         REQUIRE(runToCompletion(profile));
         CHECK(profile.getVelocities().back().linear == doctest::Approx(exitVel));
     }
@@ -128,7 +128,7 @@ TEST_CASE("the final angular velocity matches the exit velocity") {
     // omega = kappa * v holds at the endpoint like everywhere else, so pinning
     // the linear half without the angular half would leave the robot turning.
     const float exitVel = 0.5f;
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, exitVel);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, exitVel);
     REQUIRE(runToCompletion(profile));
 
     const float kappaEnd = signedCurvature(kLongPath, 1.0f);
@@ -138,7 +138,7 @@ TEST_CASE("the final angular velocity matches the exit velocity") {
 TEST_CASE("a curvature ceiling at the endpoint overrides a faster exit velocity") {
     // The hairpin's exit is tighter than kMaxVel allows, so asking to leave at
     // full speed cannot be honoured; the endpoint takes the lower of the two.
-    TrapezoidalProfile profile = makeProfile(kHairpin, 0.f, kMaxVel);
+    BezierPathProfile profile = makeProfile(kHairpin, 0.f, kMaxVel);
     REQUIRE(runToCompletion(profile));
 
     const float curvatureLimit = kMaxVel / (1.0f + unsignedCurvature(kHairpin, 1.0f) *
@@ -149,7 +149,7 @@ TEST_CASE("a curvature ceiling at the endpoint overrides a faster exit velocity"
 TEST_CASE("braking limit keeps the profile stoppable at every point") {
     // At each sample the commanded speed must be low enough that constant
     // max deceleration still reaches exit velocity by the end of the path.
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const float total = sFunction(kLongPath, 1.0f);
@@ -175,7 +175,7 @@ TEST_CASE("braking limit keeps the profile stoppable at every point") {
 // --- Segment joins ---------------------------------------------------------
 
 TEST_CASE("the final step reports how far it ran past the end of the segment") {
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const auto& vels = profile.getVelocities();
@@ -189,7 +189,7 @@ TEST_CASE("the final step reports how far it ran past the end of the segment") {
 }
 
 TEST_CASE("a segment resumed with a carry-over starts that far along") {
-    TrapezoidalProfile first = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile first = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(first));
     const float carry = first.overshootArcLength();
     REQUIRE(carry > 0.f);
@@ -197,7 +197,7 @@ TEST_CASE("a segment resumed with a carry-over starts that far along") {
     // Standing in for the next segment of a multi-segment path: it must pick up
     // the travel the previous segment's last timestep already committed to,
     // rather than restarting from its own origin.
-    TrapezoidalProfile second(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.0f, {},
+    BezierPathProfile second(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.0f, {},
                               false, kDt, carry);
     second.start();
 
@@ -212,7 +212,7 @@ TEST_CASE("a carry-over longer than the segment passes straight through it") {
     const float total = sFunction(kShortPath, 1.0f);
     const float carry = total + 0.05f;
 
-    TrapezoidalProfile profile(kShortPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.5f, 0.0f, {},
+    BezierPathProfile profile(kShortPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.5f, 0.0f, {},
                                false, kDt, carry);
     CHECK(profile.isFinished());
     // The unspent remainder has to keep going, not vanish at the join.
@@ -226,7 +226,7 @@ TEST_CASE("keyframes cap velocity at the requested arc positions") {
     const std::vector<KeyframeVelocities> keyframes = {
         {kMaxVel, 0.0f}, {0.3f, 0.5f}, {kMaxVel, 1.0f}};
 
-    TrapezoidalProfile profile(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.0f,
+    BezierPathProfile profile(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.0f,
                                keyframes, true, kDt);
     REQUIRE(runToCompletion(profile));
 
@@ -260,7 +260,7 @@ TEST_CASE("keyframe limit interpolates between the bracketing pair") {
     const std::vector<KeyframeVelocities> keyframes = {
         {0.2f, 0.0f}, {0.2f, 0.5f}, {kMaxVel, 1.0f}};
 
-    TrapezoidalProfile profile(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.0f,
+    BezierPathProfile profile(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.0f,
                                keyframes, true, kDt);
     REQUIRE(runToCompletion(profile));
 
@@ -282,7 +282,7 @@ TEST_CASE("keyframes are indexed by arc length, not elapsed time") {
     const std::vector<KeyframeVelocities> keyframes = {
         {kMaxVel, 0.0f}, {kMaxVel, 0.85f}, {0.25f, 1.0f}};
 
-    TrapezoidalProfile profile(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.25f,
+    BezierPathProfile profile(kLongPath, kMaxVel, kMaxAccel, kTrackWidth, 0.0f, 0.0f, 0.25f,
                                keyframes, true, kDt);
     REQUIRE(runToCompletion(profile));
 
@@ -301,7 +301,7 @@ TEST_CASE("commanded velocity respects the acceleration limit") {
     // exactly a*dt per step and leaves at most that much for the final sample.
     // A looser bound here would let the profile end with a step no drivetrain
     // could execute, which is what it used to do.
-    TrapezoidalProfile profile = makeProfile(kHairpin, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kHairpin, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const auto& vels = profile.getVelocities();
@@ -336,7 +336,7 @@ TEST_CASE("the acceleration limit holds across every kind of profile") {
 
     for (const Case& c : cases) {
         CAPTURE(c.name);
-        TrapezoidalProfile profile = makeProfile(*c.path, c.startVel, c.exitVel);
+        BezierPathProfile profile = makeProfile(*c.path, c.startVel, c.exitVel);
         REQUIRE(runToCompletion(profile));
 
         const auto& vels = profile.getVelocities();
@@ -357,7 +357,7 @@ TEST_CASE("ramsete followed samples align with the planned samples by index") {
     // integrating, so executed[i] landed on planned[i+1] and every followed
     // sample carried the next planned sample's time -- planned sample 1 and
     // followed sample 0 both stamped t = dt.
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const auto& planned = profile.getPoses();
@@ -388,7 +388,7 @@ TEST_CASE("ramsete followed samples align with the planned samples by index") {
 }
 
 TEST_CASE("ramsete reproduces the reference when it starts on it") {
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     RamseteFollower follower(profile.getPoses(), profile.getVelocities(), kTrackWidth, 2.0f,
@@ -410,7 +410,7 @@ TEST_CASE("ramsete reproduces the reference when it starts on it") {
 }
 
 TEST_CASE("ramsete converges from an initial pose offset") {
-    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
 
     const auto& refPoses = profile.getPoses();

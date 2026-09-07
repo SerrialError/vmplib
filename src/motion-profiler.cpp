@@ -1,6 +1,6 @@
 #include "motion-profiler.hpp"
 #include "bezier.hpp"             // convertToTFrame
-#include "motion-profiling.hpp"   // TrapezoidalProfile
+#include "motion-profiling.hpp"   // BezierPathProfile
 #include "ramsete.hpp"            // RamseteFollower
 #include <algorithm>
 #include <vector>
@@ -69,7 +69,7 @@ Trajectory generateTrajectory(
         // Deceleration comes from the backward pass inside the profile, so no
         // braking distance is needed here. carryOverArcLength resumes where the
         // previous segment's last timestep overshot the join.
-        TrapezoidalProfile profiler(
+        BezierPathProfile profiler(
             controlPoints[i],
             config.maxVelocity,
             config.maxAccel,

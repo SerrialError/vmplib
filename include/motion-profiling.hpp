@@ -2,10 +2,17 @@
 
 #include <vector>
 #include "types.hpp"
+#include "scalar-profile.hpp"
 
-class TrapezoidalProfile {
+// Velocity profile along a cubic Bezier segment.
+//
+// It is a thin adapter over ScalarProfile: the shared 1D core does the
+// backward/forward velocity passes on arc length, and this class supplies the
+// two things that are specific to a 2D path -- the curvature velocity ceiling,
+// and the map from arc length back to a pose (x, y, theta) and angular velocity.
+class BezierPathProfile {
 public:
-    TrapezoidalProfile(
+    BezierPathProfile(
         const std::vector<Point>& controlPts,
         double maxLinVel,
         double maxLinAccel,
@@ -23,11 +30,15 @@ public:
         double startArcLength = 0.0
     );
 
-    // Advance one timestep. Returns (linear, angular, time)
+    // Emit the sample at the start pose. Optional: on a multi-segment path only
+    // the first segment calls it, since every later start pose is the join the
+    // previous segment's final sample already covers.
     void start();
+
+    // Advance one timestep and emit a pose and velocity.
     void step();
 
-    // True once t ≥ 1.0
+    // True once the profile has reached the end of the segment.
     bool isFinished() const;
 
     // Distance the final step ran past the end of the segment. Feed this to the
@@ -38,62 +49,36 @@ public:
     const std::vector<Pose>& getPoses() const;
     const std::vector<VelocityLayout>& getVelocities() const;
 
-
 private:
-    // Internal state
-    double s_current_;
-    double prev_t_;
-    double time_accum_;
-    double cur_speed_;
-    double overshoot_;
-    size_t step_count_;
+    // Arc length up to Bezier parameter t, read off the sampled table below.
+    double arcLengthAt(double t) const;
+    // Inverse of arcLengthAt: the Bezier parameter at a given arc length.
+    double parameterAt(double s) const;
+    // Turn every ScalarProfile sample not yet converted into a pose and velocity.
+    void emitSamples();
 
-    // Parameters
     // Owned rather than referenced: a profile routinely outlives the expression
     // that supplied its control points.
     std::vector<Point> control_;
     double max_lin_vel_;
-    double max_lin_accel_;
     double track_width_;
-    double exit_velocity_;
-    bool use_keyframes_;
-    double dt_;
-    std::vector<KeyframeVelocities> keyframes_;
 
     // Total arc length of the segment; constant, so computed once.
     double total_length_;
-    // Backstop so a non-advancing profile fails fast instead of looping forever.
-    size_t max_steps_;
 
-    // The velocity limit curve, sampled on a uniform grid in the Bezier
-    // parameter. limit_v_ is the fastest the robot may travel at limit_s_ and
-    // still respect the curvature and keyframe ceilings ahead of it without
-    // ever exceeding max_lin_accel_ to slow down. Built up front because that
-    // question cannot be answered from the current position alone; the
-    // acceleration half of the profile is applied online in step().
+    // Arc length as a function of the Bezier parameter, sampled on a uniform
+    // grid in the parameter. This is both the grid the velocity ceiling is
+    // sampled on and the s <-> t map used to place each pose. Built once because
+    // it does not depend on the profile's state.
     std::vector<double> limit_t_;
     std::vector<double> limit_s_;
-    std::vector<double> limit_v_;
+
+    // The 1D velocity profiler this class adapts.
+    ScalarProfile scalar_;
+    // Samples already turned into poses, so each step converts only the newest.
+    size_t emitted_;
 
     // Accumulated output
     std::vector<Pose> poses_;
     std::vector<VelocityLayout> velocities_;
-
-    // Helper methods
-    void buildVelocityLimits();
-    double computeCurvatureVelocityLimit(double t) const;
-    double computeAccelerationLimit() const;
-    double keyframeCeiling(double s, const std::vector<double>& keyframeS, size_t& idx) const;
-
-    // The braking ramp expressed as a potential that is linear in arc length.
-    // v^2 alone is the continuous ramp, which a fixed timestep cannot follow;
-    // see buildVelocityLimits. These are mutual inverses.
-    double brakingPotential(double v) const;
-    double velocityAtPotential(double g) const;
-
-    // Conversions against the sampled table above. Using it for both directions
-    // keeps every arc length in the profiler on one consistent metric.
-    double arcLengthAt(double t) const;
-    double parameterAt(double s) const;
-    double velocityAt(double s) const;
 };

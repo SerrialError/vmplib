@@ -2,7 +2,6 @@
 #include "bezier.hpp"
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace {
 // Samples used to build the velocity limit curve. The grid is uniform in the
@@ -11,16 +10,43 @@ namespace {
 // and speeds this library targets.
 constexpr int kLimitSamples = 256;
 
-// A profile that stops advancing would otherwise loop forever. No single
-// segment this library is meant to plan takes anywhere near a minute to drive.
-constexpr double kWatchdogSeconds = 60.0;
-
 // Enough for a few seconds of travel at a typical dt, so the common case never
 // reallocates.
 constexpr size_t kExpectedSamples = 1000;
+
+// Curvature velocity ceiling: the outer wheel of a differential drive travels a
+// wider arc than the path centre, so a tight turn caps centre speed.
+double curvatureVelocityLimit(const std::vector<Point>& control, double t,
+                              double maxLinVel, double trackWidth) {
+    const double curv = unsignedCurvature(control, t);
+    if (std::abs(curv) < 1e-9) {
+        return maxLinVel;
+    }
+    const double turn_radius = 1.0 / curv;
+    return maxLinVel * turn_radius / (turn_radius + trackWidth / 2.0);
+}
+
+// Build the arc-length table and the curvature-limited velocity ceiling on a
+// grid uniform in the Bezier parameter. Arc length accumulates one quadrature
+// panel per cell, so the whole s(t) table costs a single sweep rather than
+// integrating from zero at every sample.
+void buildArcLengthTable(const std::vector<Point>& control, double maxLinVel,
+                         double trackWidth, std::vector<double>& outT,
+                         std::vector<double>& outS, std::vector<double>& outCeiling) {
+    outT.resize(kLimitSamples);
+    outS.resize(kLimitSamples);
+    outCeiling.resize(kLimitSamples);
+    for (int i = 0; i < kLimitSamples; i++) {
+        const double t = static_cast<double>(i) / (kLimitSamples - 1);
+        outT[i] = t;
+        outS[i] = (i == 0) ? 0.0 : outS[i - 1] + arcLength(control, outT[i - 1], t);
+        outCeiling[i] = std::min(maxLinVel,
+                                 curvatureVelocityLimit(control, t, maxLinVel, trackWidth));
+    }
+}
 } // namespace
 
-TrapezoidalProfile::TrapezoidalProfile(
+BezierPathProfile::BezierPathProfile(
     const std::vector<Point>& controlPts,
     double maxLinVel,
     double maxLinAccel,
@@ -33,174 +59,62 @@ TrapezoidalProfile::TrapezoidalProfile(
     double dt,
     double startArcLength
 )
-    : s_current_(0.0),
-      prev_t_(0.0),
-      time_accum_(timeAccum),
-      cur_speed_(startVel),
-      overshoot_(0.0),
-      step_count_(0),
-      control_(controlPts),
+    : control_(controlPts),
       max_lin_vel_(maxLinVel),
-      max_lin_accel_(maxLinAccel),
       track_width_(trackWidth),
-      exit_velocity_(endVel),
-      use_keyframes_(useKeyframes),
-      dt_(dt),
-      keyframes_(keyframes),
       total_length_(0.0),
-      max_steps_(static_cast<size_t>(kWatchdogSeconds / dt))
+      scalar_(
+          // A valid one-node placeholder. The real profile needs the arc-length
+          // table built in the body below, so it is move-assigned into scalar_
+          // once that exists.
+          0.0, std::vector<double>{ 0.0 }, std::vector<double>{ maxLinVel },
+          maxLinAccel, startVel, endVel, dt, {}),
+      emitted_(0)
 {
     // The profiler reaches into control_[0..3] throughout; refuse a malformed
     // segment here rather than let a bezier* routine read past its end.
     requireCubicSegment(control_);
-    buildVelocityLimits();
 
-    prev_t_ = parameterAt(startArcLength);
-    s_current_ = arcLengthAt(prev_t_);
-    // A carry-over longer than the whole segment skips it outright and has to
-    // keep travelling into the next one.
-    overshoot_ = std::max(0.0, startArcLength - total_length_);
-    // A segment too short to brake in cannot honour the requested start
-    // velocity; the backward pass has already worked out what it can do.
-    cur_speed_ = std::min(cur_speed_, velocityAt(s_current_));
+    std::vector<double> ceiling;
+    buildArcLengthTable(control_, max_lin_vel_, track_width_, limit_t_, limit_s_, ceiling);
+    total_length_ = limit_s_.back();
+
+    // Keyframes are pinned to a Bezier parameter; the scalar core is indexed by
+    // arc length, so project each onto the arc-length table first. When
+    // keyframes are disabled the core simply sees none.
+    std::vector<ScalarKeyframe> scalarKeyframes;
+    if (useKeyframes) {
+        scalarKeyframes.reserve(keyframes.size());
+        for (const auto& kf : keyframes) {
+            scalarKeyframes.push_back(ScalarKeyframe{ kf.velocity, arcLengthAt(kf.t) });
+        }
+    }
+
+    scalar_ = ScalarProfile(total_length_, limit_s_, std::move(ceiling), maxLinAccel,
+                            startVel, endVel, dt, std::move(scalarKeyframes), startArcLength,
+                            timeAccum);
 
     poses_.reserve(kExpectedSamples);
     velocities_.reserve(kExpectedSamples);
 }
 
-double TrapezoidalProfile::overshootArcLength() const {
-    return overshoot_;
+double BezierPathProfile::overshootArcLength() const {
+    return scalar_.overshootDistance();
 }
 
-bool TrapezoidalProfile::isFinished() const {
-    return prev_t_ >= 1.0 || step_count_ >= max_steps_;
+bool BezierPathProfile::isFinished() const {
+    return scalar_.isFinished();
 }
 
-const std::vector<Pose>& TrapezoidalProfile::getPoses() const {
+const std::vector<Pose>& BezierPathProfile::getPoses() const {
     return poses_;
 }
 
-const std::vector<VelocityLayout>& TrapezoidalProfile::getVelocities() const {
+const std::vector<VelocityLayout>& BezierPathProfile::getVelocities() const {
     return velocities_;
 }
 
-double TrapezoidalProfile::computeCurvatureVelocityLimit(double t) const {
-    double curv = unsignedCurvature(control_, t);
-    if (std::abs(curv) < 1e-9) {
-        return max_lin_vel_;
-    }
-    double turn_radius = 1.0 / curv;
-    return max_lin_vel_ * turn_radius / (turn_radius + track_width_ / 2.0);
-}
-
-// Speed reachable in one timestep given the acceleration limit.
-double TrapezoidalProfile::computeAccelerationLimit() const {
-    return cur_speed_ + (max_lin_accel_ * dt_);
-}
-
-// Velocity cap imposed by the keyframes bracketing s. keyframeS holds the arc
-// length of each keyframe; idx is carried across calls so a monotonic sweep
-// does not rescan the list.
-double TrapezoidalProfile::keyframeCeiling(double s, const std::vector<double>& keyframeS,
-                                           size_t& idx) const {
-    if (!use_keyframes_ || keyframes_.size() < 2) {
-        return std::numeric_limits<double>::infinity();
-    }
-
-    while (idx + 2 < keyframes_.size() && s >= keyframeS[idx + 1]) {
-        ++idx;
-    }
-
-    const double s0 = keyframeS[idx];
-    const double s1 = keyframeS[idx + 1];
-    const double v0 = keyframes_[idx].velocity;
-    const double v1 = keyframes_[idx + 1].velocity;
-
-    const double span = s1 - s0;
-    if (span <= 0.0) {
-        return v1;
-    }
-
-    // Interpolate in v^2, which makes each keyframe interval a constant
-    // acceleration segment: v^2 = v0^2 + 2*a*(s - s0).
-    const double lambda = std::clamp((s - s0) / span, 0.0, 1.0);
-    const double vsq = v0 * v0 + (v1 * v1 - v0 * v0) * lambda;
-    return vsq > 0.0 ? std::sqrt(vsq) : 0.0;
-}
-
-// g(v) = v^2 + a*dt*v. Braking at the limit advances g by exactly 2*a*ds per
-// unit of arc length covered, so the ramp is a straight line in g.
-double TrapezoidalProfile::brakingPotential(double v) const {
-    return v * v + max_lin_accel_ * dt_ * v;
-}
-
-double TrapezoidalProfile::velocityAtPotential(double g) const {
-    const double adt = max_lin_accel_ * dt_;
-    return 0.5 * (std::sqrt(adt * adt + 4.0 * std::max(0.0, g)) - adt);
-}
-
-void TrapezoidalProfile::buildVelocityLimits() {
-    limit_t_.resize(kLimitSamples);
-    limit_s_.resize(kLimitSamples);
-    limit_v_.resize(kLimitSamples);
-
-    // Arc length accumulates one quadrature panel per cell, so the whole s(t)
-    // table costs a single sweep rather than integrating from zero at every
-    // sample. It is also finer than sFunction's fixed panel count, so it is the
-    // metric the rest of the profiler uses.
-    for (int i = 0; i < kLimitSamples; i++) {
-        const double t = static_cast<double>(i) / (kLimitSamples - 1);
-        limit_t_[i] = t;
-        limit_s_[i] = (i == 0) ? 0.0
-                               : limit_s_[i - 1] + arcLength(control_, limit_t_[i - 1], t);
-    }
-    total_length_ = limit_s_.back();
-
-    // Hard ceilings first: geometry and the user's keyframes, neither of which
-    // knows anything about what the drivetrain can reach.
-    std::vector<double> keyframeS;
-    keyframeS.reserve(keyframes_.size());
-    for (const auto& kf : keyframes_) {
-        keyframeS.push_back(arcLengthAt(kf.t));
-    }
-
-    size_t kfIdx = 0;
-    for (int i = 0; i < kLimitSamples; i++) {
-        limit_v_[i] = std::min({ max_lin_vel_,
-                                 computeCurvatureVelocityLimit(limit_t_[i]),
-                                 keyframeCeiling(limit_s_[i], keyframeS, kfIdx) });
-    }
-
-    // Backward pass, swept from the end. This is what makes the profile slow
-    // down *before* a constrained region instead of stepping down at it, and it
-    // subsumes the old end-of-segment braking limit. Only deceleration needs
-    // precomputing, because only deceleration depends on what lies ahead; the
-    // matching forward pass is applied online in step() as the per-timestep
-    // acceleration cap.
-    //
-    // The textbook ramp v^2 = v_next^2 + 2*a*ds is the continuous one, and a
-    // fixed timestep cannot ride it down: each step covers v*dt, so following
-    // it drops v by v - sqrt(v^2 - 2*a*v*dt), which grows to the whole of v as
-    // v approaches 2*a*dt. The tail therefore lands short of the exit velocity
-    // and has to give the remainder back in one step, well past the
-    // acceleration limit.
-    //
-    // Stepping the recurrence backwards instead (v_j = v_end + j*a*dt at
-    // r_j = r_(j-1) + v_j*dt) gives a ramp that costs half a step's travel more
-    // and is linear in g(v) = v^2 + a*dt*v. Riding it down spends exactly
-    // a*dt per step and lands on the exit velocity, leaving a residual of at
-    // most a*dt for the endpoint sample in step() to absorb.
-    limit_v_.back() = std::min(limit_v_.back(), exit_velocity_);
-    for (int i = kLimitSamples - 2; i >= 0; i--) {
-        const double ds = limit_s_[i + 1] - limit_s_[i];
-        const double reachable = velocityAtPotential(brakingPotential(limit_v_[i + 1]) +
-                                                     2.0 * max_lin_accel_ * ds);
-        limit_v_[i] = std::min(limit_v_[i], reachable);
-    }
-
-}
-
-double TrapezoidalProfile::arcLengthAt(double t) const {
+double BezierPathProfile::arcLengthAt(double t) const {
     if (t <= 0.0) {
         return 0.0;
     }
@@ -214,7 +128,7 @@ double TrapezoidalProfile::arcLengthAt(double t) const {
     return limit_s_[lo] + (limit_s_[lo + 1] - limit_s_[lo]) * frac;
 }
 
-double TrapezoidalProfile::parameterAt(double s) const {
+double BezierPathProfile::parameterAt(double s) const {
     if (s <= 0.0) {
         return 0.0;
     }
@@ -231,67 +145,23 @@ double TrapezoidalProfile::parameterAt(double s) const {
     return limit_t_[lo] + (limit_t_[hi] - limit_t_[lo]) * (s - limit_s_[lo]) / span;
 }
 
-double TrapezoidalProfile::velocityAt(double s) const {
-    if (s <= 0.0) {
-        return limit_v_.front();
+void BezierPathProfile::emitSamples() {
+    const auto& samples = scalar_.samples();
+    for (; emitted_ < samples.size(); ++emitted_) {
+        const ScalarSample& s = samples[emitted_];
+        const double t = parameterAt(s.position);
+        const double kappa = signedCurvature(control_, t);
+        poses_.push_back(findXandY(control_, t));
+        velocities_.push_back(VelocityLayout{ s.velocity, kappa * s.velocity, s.time });
     }
-    if (s >= total_length_) {
-        return limit_v_.back();
-    }
-    const auto it = std::upper_bound(limit_s_.begin(), limit_s_.end(), s);
-    const size_t hi = static_cast<size_t>(it - limit_s_.begin());
-    const size_t lo = hi - 1;
-    const double span = limit_s_[hi] - limit_s_[lo];
-    if (span <= 0.0) {
-        return limit_v_[hi];
-    }
-    // Interpolate in the braking potential, the metric the backward pass is
-    // linear in. Interpolating in v^2 instead would restore the continuous
-    // ramp's shape inside the final cell, which is where the profile is least
-    // able to afford it: v^2 leaves the curve going as sqrt(distance-to-go)
-    // near the end, where the feasible ramp is very nearly linear in it.
-    const double lambda = (s - limit_s_[lo]) / span;
-    const double g0 = brakingPotential(limit_v_[lo]);
-    const double g1 = brakingPotential(limit_v_[hi]);
-    return velocityAtPotential(g0 + (g1 - g0) * lambda);
 }
 
-void TrapezoidalProfile::start() {
-    poses_.push_back(findXandY(control_, prev_t_));
-    velocities_.push_back(
-        VelocityLayout{ cur_speed_, signedCurvature(control_, prev_t_) * cur_speed_, time_accum_ });
+void BezierPathProfile::start() {
+    scalar_.start();
+    emitSamples();
 }
 
-void TrapezoidalProfile::step() {
-    ++step_count_;
-    time_accum_ += dt_;
-    s_current_ = arcLengthAt(prev_t_);
-
-    // The robot crosses the step at the speed it is holding where the step
-    // begins. The curve caps deceleration; the acceleration cap is the forward
-    // pass, applied here one timestep at a time.
-    const double travel_speed = std::min(velocityAt(s_current_), computeAccelerationLimit());
-
-    // The step that ends the segment lands past t = 1. Record by how much so
-    // the next segment can start there instead of discarding the travel.
-    const double s_target = s_current_ + travel_speed * dt_;
-    overshoot_ = std::max(0.0, s_target - total_length_);
-    const double next_t = parameterAt(s_target);
-
-    // A sample states the speed to hold *at* the pose it carries, so the limit
-    // curve is read where the step lands rather than where it started. Reading
-    // it at the start put each sample half a step out of phase with its own
-    // pose: harmless in the middle of a segment, but the last sample lands on
-    // the endpoint, where the curve has already fallen to the exit velocity
-    // while the departing speed has not. That is why a segment planned to stop
-    // used to trail off at a tenth of a metre per second instead of at rest.
-    const double next_speed = std::min(velocityAt(s_target), computeAccelerationLimit());
-
-    const double kappa = signedCurvature(control_, next_t);
-    poses_.push_back(findXandY(control_, next_t));
-    velocities_.push_back(
-        VelocityLayout{ next_speed, kappa * next_speed, time_accum_ });
-
-    prev_t_ = next_t;
-    cur_speed_ = next_speed;
+void BezierPathProfile::step() {
+    scalar_.step();
+    emitSamples();
 }

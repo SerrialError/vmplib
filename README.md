@@ -1,36 +1,11 @@
 # vmplib (VEX Motion Profiling Library)
 
-A C++17 library for 2D motion profiling on cubic Bézier paths, aimed at VEX
-robotics. Give it a path and a drivetrain, get back a time-parameterised
-trajectory: poses, linear velocity and angular velocity, one sample every `dt`.
+An offline 1D and 2D Motion Profiler for drivetrains and other mechanisms.
 
-It implements the methods described in
+The theory behind the program was described and developed in a paper I made
 
 > *2D Motion Profiling for Competitive Robotics*
 > [Read the PDF](https://github.com/SerrialError/latex-papers/blob/main/2dmp.pdf)
-
-Profiles are generated **offline** which can then be exported to your realtime code you run on your brain.
-
----
-
-## What it does
-
-- **Cubic Bézier geometry.** Position, derivatives, parametric speed and signed
-  curvature anywhere on a segment.
-- **Arc-length parameterisation.** 5-point Gauss–Legendre quadrature over
-  composite panels for `s(t)`, and a Newton–Raphson inverse for `t(s)`.
-- **Two-pass velocity profiling.** The velocity ceiling — top speed, the
-  curvature limit , and any keyframes — is sampled up
-  front, then swept backward.
-- **Keyframes.** Pin a target speed to a point on the field. The point is
-  projected onto the curve in 2D, and speeds between keyframes are interpolated
-  in `v²`, which makes each interval a constant-acceleration segment.
-- **Multi-segment paths.** Velocity and the timestep grid stay continuous across
-  segment joins; a step that overshoots the end of one segment carries its
-  leftover arc length into the next.
-- **RAMSETE simulation.** Every trajectory also comes back with what a RAMSETE
-  follower actually achieves tracking it, which is how you tell whether a plan is
-  trackable at all.
 
 ---
 
@@ -125,7 +100,6 @@ Override the fields rather than editing the source.
 
 ## Future plans
 
-- CLI for path import/export
-- Tighter integration with path.jerryio and other route planners
+- Tighter integration with path.jerryio
 
 Contributions, issues, and pull requests are welcome.
