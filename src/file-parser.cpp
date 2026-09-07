@@ -1,7 +1,6 @@
 #include "file-parser.hpp"
 #include <fstream>
 #include <sstream>
-#include <iostream>
 
 void loadPaths(
     const std::string& filename,
@@ -10,8 +9,7 @@ void loadPaths(
 ) {
     std::ifstream infile(filename);
     if (!infile) {
-        std::cerr << "Error: could not open " << filename << "\n";
-        return;
+        throw FileParseError("could not open " + filename);
     }
 
     enum class State { None, ReadingPoints, ReadingVels };
@@ -77,7 +75,7 @@ void loadPaths(
             if (iss >> x >> comma >> y && comma == ',') {
                 currentPoints.push_back(Point{x, y});
             } else {
-                std::cerr << "Warning: failed to parse point line: " << line << "\n";
+                throw FileParseError("failed to parse point line: " + line);
             }
         }
         else if (state == State::ReadingVels) {
@@ -86,7 +84,7 @@ void loadPaths(
             if (iss >> vx >> c1 >> vy >> c2 >> vz && c1 == ',' && c2 == ',') {
                 currentVels.push_back(KeyframeVelocitiesXandY{vx, vy, vz});
             } else {
-                std::cerr << "Warning: failed to parse velocity line: " << line << "\n";
+                throw FileParseError("failed to parse velocity line: " + line);
             }
         }
     }
