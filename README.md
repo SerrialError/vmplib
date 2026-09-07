@@ -1,36 +1,11 @@
 # vmplib (VEX Motion Profiling Library)
 
-A C++17 library for 2D motion profiling on cubic Bézier paths, aimed at VEX
-robotics. Give it a path and a drivetrain, get back a time-parameterised
-trajectory: poses, linear velocity and angular velocity, one sample every `dt`.
+An offline 1D and 2D Motion Profiler for drivetrains and other mechanisms.
 
-It implements the methods described in
+The theory behind the program was described and developed in a paper I made
 
 > *2D Motion Profiling for Competitive Robotics*
 > [Read the PDF](https://github.com/SerrialError/latex-papers/blob/main/2dmp.pdf)
-
-Profiles are generated **offline** which can then be exported to your realtime code you run on your brain.
-
----
-
-## What it does
-
-- **Cubic Bézier geometry.** Position, derivatives, parametric speed and signed
-  curvature anywhere on a segment.
-- **Arc-length parameterisation.** 5-point Gauss–Legendre quadrature over
-  composite panels for `s(t)`, and a Newton–Raphson inverse for `t(s)`.
-- **Two-pass velocity profiling.** The velocity ceiling — top speed, the
-  curvature limit , and any keyframes — is sampled up
-  front, then swept backward.
-- **Keyframes.** Pin a target speed to a point on the field. The point is
-  projected onto the curve in 2D, and speeds between keyframes are interpolated
-  in `v²`, which makes each interval a constant-acceleration segment.
-- **Multi-segment paths.** Velocity and the timestep grid stay continuous across
-  segment joins; a step that overshoots the end of one segment carries its
-  leftover arc length into the next.
-- **RAMSETE simulation.** Every trajectory also comes back with what a RAMSETE
-  follower actually achieves tracking it, which is how you tell whether a plan is
-  trackable at all.
 
 ---
 
@@ -123,44 +98,8 @@ Override the fields rather than editing the source.
 
 ---
 
-## 1D profiling
-
-The same velocity profiler drives a single axis — a straight drive, a turret, a
-lift — without any of the 2D path machinery. `generateScalarProfile`
-(`scalar-profiler.hpp`) takes a distance and motion limits and returns one
-`(position, velocity, accel, time)` sample every `dt`:
-
-```cpp
-#include "scalar-profiler.hpp"
-
-const ScalarProfileConfig config{ /*maxVelocity=*/1.5, /*maxAccel=*/3.0, /*dt=*/0.01 };
-
-// Optional: pin a velocity to a distance along the move (need not be pre-sorted).
-const std::vector<ScalarKeyframe> keyframes = {{1.5, 0.0}, {0.4, 1.0}, {1.5, 2.0}};
-
-const std::vector<ScalarSample> samples =
-    generateScalarProfile(/*distance=*/2.0, config, /*startVel=*/0.0, /*endVel=*/0.0,
-                          keyframes);
-```
-
-It is **unit-agnostic**: distance, velocity, and acceleration may be metres,
-inches, or radians, as long as they are consistent. Gearing and motor
-conversions stay in your robot code. See `examples/scalar_profile_demo.cpp`:
-
-```bash
-make example
-./bin/scalar-profile-demo
-```
-
-The 2D `generateTrajectory` and this 1D API share the same underlying
-`ScalarProfile` core, so both land exactly on their exit velocity and never
-exceed the acceleration limit — including on the final step.
-
----
-
 ## Future plans
 
-- CLI for path import/export
-- Tighter integration with path.jerryio and other route planners
+- Tighter integration with path.jerryio
 
 Contributions, issues, and pull requests are welcome.
