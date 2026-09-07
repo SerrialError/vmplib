@@ -1,4 +1,8 @@
 // printer.cpp
+//
+// The output boundary. Internal state is carried in double (see types.hpp);
+// the values are narrowed to float here, on the way out, because that is the
+// precision a Desmos plot or a robot's velocity controller actually consumes.
 #include "printer.hpp"
 #include <iomanip>
 #include <ostream>
@@ -16,8 +20,8 @@ void printPoseVectorDesmos(
 			out
 				<< "("
 				<< std::fixed << std::setprecision(6)
-				<< poses[i][j].x << ","
-				<< poses[i][j].y
+				<< static_cast<float>(poses[i][j].x) << ","
+				<< static_cast<float>(poses[i][j].y)
 				<< ")";
 			if (i != poses.size() - 1 || j != poses[i].size() - 1) {
 				out << ",";
@@ -36,13 +40,13 @@ void printVelocityVectorDesmos(
 	out << label << "[";
 	for (size_t i = 0; i < vels.size(); ++i) {
 		for (size_t j = 0; j < vels[i].size(); ++j) {
-			float value = (whichField == "linear")
+			float value = static_cast<float>((whichField == "linear")
 				? vels[i][j].linear
-				: vels[i][j].angular;
+				: vels[i][j].angular);
 			out
 				<< "("
 				<< std::fixed << std::setprecision(6)
-				<< vels[i][j].time << ","
+				<< static_cast<float>(vels[i][j].time) << ","
 				<< value
 				<< ")";
 			if (i != vels.size() - 1 || j != vels[i].size() - 1) {
@@ -67,7 +71,8 @@ void printPoseVectorCode(
 			if (!first) out << ",";
 			out << "("
 				<< std::fixed << std::setprecision(6)
-				<< p.x << ", " << p.y << ", " << p.theta
+				<< static_cast<float>(p.x) << ", " << static_cast<float>(p.y)
+				<< ", " << static_cast<float>(p.theta)
 				<< ")";
 			first = false;
 		}
@@ -90,7 +95,7 @@ void printVelocityVectorCode(
 			if (!first) out << ",";
 			out << "("
 				<< std::fixed << std::setprecision(6)
-				<< v.linear << ", " << v.angular
+				<< static_cast<float>(v.linear) << ", " << static_cast<float>(v.angular)
 				<< ")";
 			first = false;
 		}

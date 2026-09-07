@@ -47,6 +47,13 @@ bool runToCompletion(TrapezoidalProfile& profile) {
 
 } // namespace
 
+TEST_CASE("profile construction rejects a segment without exactly four points") {
+    // The profiler reaches into controlPoints[0..3] the moment it builds the
+    // velocity limits, so a malformed segment must be refused at the boundary.
+    const std::vector<Point> triangle = {{0.f, 0.f}, {1.f, 0.f}, {2.f, 0.f}};
+    CHECK_THROWS_AS(makeProfile(triangle, 0.f, 0.f), SegmentError);
+}
+
 TEST_CASE("profile on a normal-length path terminates") {
     TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
     REQUIRE(runToCompletion(profile));
@@ -89,9 +96,9 @@ TEST_CASE("angular velocity is consistent with curvature and linear velocity") {
 
     // omega = kappa * v, so |omega| must stay bounded by the worst-case
     // curvature along the path times the commanded speed.
-    float maxKappa = 0.f;
+    double maxKappa = 0.0;
     for (int i = 0; i <= 100; ++i) {
-        maxKappa = std::max(maxKappa, unsignedCurvature(kLongPath, i / 100.f));
+        maxKappa = std::max(maxKappa, unsignedCurvature(kLongPath, i / 100.0));
     }
     for (const auto& v : profile.getVelocities()) {
         CHECK(std::fabs(v.angular) <= maxKappa * kMaxVel + 1e-3f);
@@ -342,6 +349,43 @@ TEST_CASE("the acceleration limit holds across every kind of profile") {
 }
 
 // --- RAMSETE ---------------------------------------------------------------
+
+TEST_CASE("ramsete followed samples align with the planned samples by index") {
+    // The follower tracks planned sample i on the step that produces executed
+    // sample i, so the two must share an index: same timestamp, same pose (to
+    // within a step of tracking error). The old code logged the pose *after*
+    // integrating, so executed[i] landed on planned[i+1] and every followed
+    // sample carried the next planned sample's time -- planned sample 1 and
+    // followed sample 0 both stamped t = dt.
+    TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    REQUIRE(runToCompletion(profile));
+
+    const auto& planned = profile.getPoses();
+    const auto& plannedVels = profile.getVelocities();
+
+    RamseteFollower follower(planned, plannedVels, kTrackWidth, 2.0f, 0.7f, 0.0f, kDt, false);
+    int steps = 0;
+    while (!follower.isFinished() && steps < kStepCap) {
+        follower.step();
+        ++steps;
+    }
+    REQUIRE(follower.isFinished());
+
+    const auto& followed = follower.getExecutedPoses();
+    const auto& followedVels = follower.getExecutedVelocities();
+    REQUIRE(followed.size() == planned.size());
+
+    for (size_t i = 0; i < planned.size(); ++i) {
+        CAPTURE(i);
+        // Same timestamp as the planned sample it tracks.
+        CHECK(followedVels[i].time == doctest::Approx(plannedVels[i].time).epsilon(1e-6));
+        // Starting on the reference, followed[i] sits on planned[i], not a whole
+        // step ahead on planned[i+1].
+        const float dxHere = followed[i].x - planned[i].x;
+        const float dyHere = followed[i].y - planned[i].y;
+        CHECK(std::sqrt(dxHere * dxHere + dyHere * dyHere) < 0.01f);
+    }
+}
 
 TEST_CASE("ramsete reproduces the reference when it starts on it") {
     TrapezoidalProfile profile = makeProfile(kLongPath, 0.f, 0.f);

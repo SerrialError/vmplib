@@ -13,7 +13,7 @@ constexpr int kLimitSamples = 256;
 
 // A profile that stops advancing would otherwise loop forever. No single
 // segment this library is meant to plan takes anywhere near a minute to drive.
-constexpr float kWatchdogSeconds = 60.0f;
+constexpr double kWatchdogSeconds = 60.0;
 
 // Enough for a few seconds of travel at a typical dt, so the common case never
 // reallocates.
@@ -22,22 +22,22 @@ constexpr size_t kExpectedSamples = 1000;
 
 TrapezoidalProfile::TrapezoidalProfile(
     const std::vector<Point>& controlPts,
-    float maxLinVel,
-    float maxLinAccel,
-    float trackWidth,
-    float timeAccum,
-    float startVel,
-    float endVel,
+    double maxLinVel,
+    double maxLinAccel,
+    double trackWidth,
+    double timeAccum,
+    double startVel,
+    double endVel,
     const std::vector<KeyframeVelocities>& keyframes,
     bool useKeyframes,
-    float dt,
-    float startArcLength
+    double dt,
+    double startArcLength
 )
-    : s_current_(0.0f),
-      prev_t_(0.0f),
+    : s_current_(0.0),
+      prev_t_(0.0),
       time_accum_(timeAccum),
       cur_speed_(startVel),
-      overshoot_(0.0f),
+      overshoot_(0.0),
       step_count_(0),
       control_(controlPts),
       max_lin_vel_(maxLinVel),
@@ -47,16 +47,19 @@ TrapezoidalProfile::TrapezoidalProfile(
       use_keyframes_(useKeyframes),
       dt_(dt),
       keyframes_(keyframes),
-      total_length_(0.0f),
+      total_length_(0.0),
       max_steps_(static_cast<size_t>(kWatchdogSeconds / dt))
 {
+    // The profiler reaches into control_[0..3] throughout; refuse a malformed
+    // segment here rather than let a bezier* routine read past its end.
+    requireCubicSegment(control_);
     buildVelocityLimits();
 
     prev_t_ = parameterAt(startArcLength);
     s_current_ = arcLengthAt(prev_t_);
     // A carry-over longer than the whole segment skips it outright and has to
     // keep travelling into the next one.
-    overshoot_ = std::max(0.0f, startArcLength - total_length_);
+    overshoot_ = std::max(0.0, startArcLength - total_length_);
     // A segment too short to brake in cannot honour the requested start
     // velocity; the backward pass has already worked out what it can do.
     cur_speed_ = std::min(cur_speed_, velocityAt(s_current_));
@@ -65,12 +68,12 @@ TrapezoidalProfile::TrapezoidalProfile(
     velocities_.reserve(kExpectedSamples);
 }
 
-float TrapezoidalProfile::overshootArcLength() const {
+double TrapezoidalProfile::overshootArcLength() const {
     return overshoot_;
 }
 
 bool TrapezoidalProfile::isFinished() const {
-    return prev_t_ >= 1.0f || step_count_ >= max_steps_;
+    return prev_t_ >= 1.0 || step_count_ >= max_steps_;
 }
 
 const std::vector<Pose>& TrapezoidalProfile::getPoses() const {
@@ -81,59 +84,59 @@ const std::vector<VelocityLayout>& TrapezoidalProfile::getVelocities() const {
     return velocities_;
 }
 
-float TrapezoidalProfile::computeCurvatureVelocityLimit(float t) const {
-    float curv = unsignedCurvature(control_, t);
-    if (std::abs(curv) < 1e-6f) {
+double TrapezoidalProfile::computeCurvatureVelocityLimit(double t) const {
+    double curv = unsignedCurvature(control_, t);
+    if (std::abs(curv) < 1e-9) {
         return max_lin_vel_;
     }
-    float turn_radius = 1.0f / curv;
-    return max_lin_vel_ * turn_radius / (turn_radius + track_width_ / 2.0f);
+    double turn_radius = 1.0 / curv;
+    return max_lin_vel_ * turn_radius / (turn_radius + track_width_ / 2.0);
 }
 
 // Speed reachable in one timestep given the acceleration limit.
-float TrapezoidalProfile::computeAccelerationLimit() const {
+double TrapezoidalProfile::computeAccelerationLimit() const {
     return cur_speed_ + (max_lin_accel_ * dt_);
 }
 
 // Velocity cap imposed by the keyframes bracketing s. keyframeS holds the arc
 // length of each keyframe; idx is carried across calls so a monotonic sweep
 // does not rescan the list.
-float TrapezoidalProfile::keyframeCeiling(float s, const std::vector<float>& keyframeS,
-                                          size_t& idx) const {
+double TrapezoidalProfile::keyframeCeiling(double s, const std::vector<double>& keyframeS,
+                                           size_t& idx) const {
     if (!use_keyframes_ || keyframes_.size() < 2) {
-        return std::numeric_limits<float>::infinity();
+        return std::numeric_limits<double>::infinity();
     }
 
     while (idx + 2 < keyframes_.size() && s >= keyframeS[idx + 1]) {
         ++idx;
     }
 
-    const float s0 = keyframeS[idx];
-    const float s1 = keyframeS[idx + 1];
-    const float v0 = keyframes_[idx].velocity;
-    const float v1 = keyframes_[idx + 1].velocity;
+    const double s0 = keyframeS[idx];
+    const double s1 = keyframeS[idx + 1];
+    const double v0 = keyframes_[idx].velocity;
+    const double v1 = keyframes_[idx + 1].velocity;
 
-    const float span = s1 - s0;
-    if (span <= 0.0f) {
+    const double span = s1 - s0;
+    if (span <= 0.0) {
         return v1;
     }
 
     // Interpolate in v^2, which makes each keyframe interval a constant
     // acceleration segment: v^2 = v0^2 + 2*a*(s - s0).
-    const float lambda = std::clamp((s - s0) / span, 0.0f, 1.0f);
-    const float vsq = v0 * v0 + (v1 * v1 - v0 * v0) * lambda;
-    return vsq > 0.0f ? std::sqrt(vsq) : 0.0f;
+    const double lambda = std::clamp((s - s0) / span, 0.0, 1.0);
+    const double vsq = v0 * v0 + (v1 * v1 - v0 * v0) * lambda;
+    return vsq > 0.0 ? std::sqrt(vsq) : 0.0;
 }
 
 // g(v) = v^2 + a*dt*v. Braking at the limit advances g by exactly 2*a*ds per
 // unit of arc length covered, so the ramp is a straight line in g.
-float TrapezoidalProfile::brakingPotential(float v) const {
+double TrapezoidalProfile::brakingPotential(double v) const {
     return v * v + max_lin_accel_ * dt_ * v;
 }
 
-float TrapezoidalProfile::velocityAtPotential(float g) const {
-    const float adt = max_lin_accel_ * dt_;
-    return 0.5f * (std::sqrt(adt * adt + 4.0f * std::max(0.0f, g)) - adt);
+double TrapezoidalProfile::velocityAtPotential(double g) const {
+    const double adt = max_lin_accel_ * dt_;
+    return 0.5 * (std::sqrt(adt * adt + 4.0 * std::max(0.0, g)) - adt);
 }
 
 void TrapezoidalProfile::buildVelocityLimits() {
@@ -146,16 +149,16 @@ void TrapezoidalProfile::buildVelocityLimits() {
     // sample. It is also finer than sFunction's fixed panel count, so it is the
     // metric the rest of the profiler uses.
     for (int i = 0; i < kLimitSamples; i++) {
-        const float t = static_cast<float>(i) / (kLimitSamples - 1);
+        const double t = static_cast<double>(i) / (kLimitSamples - 1);
         limit_t_[i] = t;
-        limit_s_[i] = (i == 0) ? 0.0f
+        limit_s_[i] = (i == 0) ? 0.0
                                : limit_s_[i - 1] + arcLength(control_, limit_t_[i - 1], t);
     }
     total_length_ = limit_s_.back();
 
     // Hard ceilings first: geometry and the user's keyframes, neither of which
     // knows anything about what the drivetrain can reach.
-    std::vector<float> keyframeS;
+    std::vector<double> keyframeS;
     keyframeS.reserve(keyframes_.size());
     for (const auto& kf : keyframes_) {
         keyframeS.push_back(arcLengthAt(kf.t));
@@ -189,47 +192,47 @@ void TrapezoidalProfile::buildVelocityLimits() {
     // most a*dt for the endpoint sample in step() to absorb.
     limit_v_.back() = std::min(limit_v_.back(), exit_velocity_);
     for (int i = kLimitSamples - 2; i >= 0; i--) {
-        const float ds = limit_s_[i + 1] - limit_s_[i];
-        const float reachable = velocityAtPotential(brakingPotential(limit_v_[i + 1]) +
-                                                    2.0f * max_lin_accel_ * ds);
+        const double ds = limit_s_[i + 1] - limit_s_[i];
+        const double reachable = velocityAtPotential(brakingPotential(limit_v_[i + 1]) +
+                                                     2.0 * max_lin_accel_ * ds);
         limit_v_[i] = std::min(limit_v_[i], reachable);
     }
 
 }
 
-float TrapezoidalProfile::arcLengthAt(float t) const {
-    if (t <= 0.0f) {
-        return 0.0f;
+double TrapezoidalProfile::arcLengthAt(double t) const {
+    if (t <= 0.0) {
+        return 0.0;
     }
-    if (t >= 1.0f) {
+    if (t >= 1.0) {
         return total_length_;
     }
     // The grid is uniform in t, so the cell index is arithmetic, not a search.
-    const float scaled = t * (kLimitSamples - 1);
+    const double scaled = t * (kLimitSamples - 1);
     const int lo = std::min(static_cast<int>(scaled), kLimitSamples - 2);
-    const float frac = scaled - static_cast<float>(lo);
+    const double frac = scaled - static_cast<double>(lo);
     return limit_s_[lo] + (limit_s_[lo + 1] - limit_s_[lo]) * frac;
 }
 
-float TrapezoidalProfile::parameterAt(float s) const {
-    if (s <= 0.0f) {
-        return 0.0f;
+double TrapezoidalProfile::parameterAt(double s) const {
+    if (s <= 0.0) {
+        return 0.0;
     }
     if (s >= total_length_) {
-        return 1.0f;
+        return 1.0;
     }
     const auto it = std::upper_bound(limit_s_.begin(), limit_s_.end(), s);
     const size_t hi = static_cast<size_t>(it - limit_s_.begin());
     const size_t lo = hi - 1;
-    const float span = limit_s_[hi] - limit_s_[lo];
-    if (span <= 0.0f) {
+    const double span = limit_s_[hi] - limit_s_[lo];
+    if (span <= 0.0) {
         return limit_t_[hi];
     }
     return limit_t_[lo] + (limit_t_[hi] - limit_t_[lo]) * (s - limit_s_[lo]) / span;
 }
 
-float TrapezoidalProfile::velocityAt(float s) const {
-    if (s <= 0.0f) {
+double TrapezoidalProfile::velocityAt(double s) const {
+    if (s <= 0.0) {
         return limit_v_.front();
     }
     if (s >= total_length_) {
@@ -238,8 +241,8 @@ float TrapezoidalProfile::velocityAt(float s) const {
     const auto it = std::upper_bound(limit_s_.begin(), limit_s_.end(), s);
     const size_t hi = static_cast<size_t>(it - limit_s_.begin());
     const size_t lo = hi - 1;
-    const float span = limit_s_[hi] - limit_s_[lo];
-    if (span <= 0.0f) {
+    const double span = limit_s_[hi] - limit_s_[lo];
+    if (span <= 0.0) {
         return limit_v_[hi];
     }
     // Interpolate in the braking potential, the metric the backward pass is
@@ -247,9 +250,9 @@ float TrapezoidalProfile::velocityAt(float s) const {
     // ramp's shape inside the final cell, which is where the profile is least
     // able to afford it: v^2 leaves the curve going as sqrt(distance-to-go)
     // near the end, where the feasible ramp is very nearly linear in it.
-    const float lambda = (s - limit_s_[lo]) / span;
-    const float g0 = brakingPotential(limit_v_[lo]);
-    const float g1 = brakingPotential(limit_v_[hi]);
+    const double lambda = (s - limit_s_[lo]) / span;
+    const double g0 = brakingPotential(limit_v_[lo]);
+    const double g1 = brakingPotential(limit_v_[hi]);
     return velocityAtPotential(g0 + (g1 - g0) * lambda);
 }
 
@@ -267,13 +270,13 @@ void TrapezoidalProfile::step() {
     // The robot crosses the step at the speed it is holding where the step
     // begins. The curve caps deceleration; the acceleration cap is the forward
     // pass, applied here one timestep at a time.
-    const float travel_speed = std::min(velocityAt(s_current_), computeAccelerationLimit());
+    const double travel_speed = std::min(velocityAt(s_current_), computeAccelerationLimit());
 
     // The step that ends the segment lands past t = 1. Record by how much so
     // the next segment can start there instead of discarding the travel.
-    const float s_target = s_current_ + travel_speed * dt_;
-    overshoot_ = std::max(0.0f, s_target - total_length_);
-    const float next_t = parameterAt(s_target);
+    const double s_target = s_current_ + travel_speed * dt_;
+    overshoot_ = std::max(0.0, s_target - total_length_);
+    const double next_t = parameterAt(s_target);
 
     // A sample states the speed to hold *at* the pose it carries, so the limit
     // curve is read where the step lands rather than where it started. Reading
@@ -282,9 +285,9 @@ void TrapezoidalProfile::step() {
     // the endpoint, where the curve has already fallen to the exit velocity
     // while the departing speed has not. That is why a segment planned to stop
     // used to trail off at a tenth of a metre per second instead of at rest.
-    const float next_speed = std::min(velocityAt(s_target), computeAccelerationLimit());
+    const double next_speed = std::min(velocityAt(s_target), computeAccelerationLimit());
 
-    const float kappa = signedCurvature(control_, next_t);
+    const double kappa = signedCurvature(control_, next_t);
     poses_.push_back(findXandY(control_, next_t));
     velocities_.push_back(
         VelocityLayout{ next_speed, kappa * next_speed, time_accum_ });

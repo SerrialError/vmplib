@@ -10,14 +10,14 @@
 namespace MotionUtils {
 
     // Wraps an angle into [-pi, +pi]
-    inline float wrapAngle(float angle) {
-        float wrapped = std::fmod(angle + static_cast<float>(M_PI), 2.0f * static_cast<float>(M_PI));
-        if (wrapped < 0) wrapped += 2.0f * static_cast<float>(M_PI);
-        return wrapped - static_cast<float>(M_PI);
+    inline double wrapAngle(double angle) {
+        double wrapped = std::fmod(angle + M_PI, 2.0 * M_PI);
+        if (wrapped < 0) wrapped += 2.0 * M_PI;
+        return wrapped - M_PI;
     }
 
     // Sinc function: sin(x)/x, with limit →1 as x→0
-    inline float sinc(float x) {
-        return (std::abs(x) < 1e-5f) ? 1.0f : std::sin(x) / x;
+    inline double sinc(double x) {
+        return (std::abs(x) < 1e-9) ? 1.0 : std::sin(x) / x;
     }
 }

@@ -170,8 +170,8 @@ TEST_CASE("projectOntoCurve recovers the parameter of an on-curve point") {
         const float expected = i / 10.f;
         const Pose p = findXandY(kQuarterCircle, expected);
 
-        float residual = -1.f;
-        const float t = projectOntoCurve(kQuarterCircle, p.x, p.y, &residual);
+        double residual = -1.0;
+        const double t = projectOntoCurve(kQuarterCircle, p.x, p.y, &residual);
 
         CAPTURE(expected);
         CHECK(t == doctest::Approx(expected).epsilon(1e-2));
@@ -184,8 +184,8 @@ TEST_CASE("projectOntoCurve reports how far off-path a point is") {
     // at radius 1.2 along the 45-degree ray sits 0.2 outside the curve.
     const float diag = 1.2f / std::sqrt(2.f);
 
-    float residual = -1.f;
-    const float t = projectOntoCurve(kQuarterCircle, diag, diag, &residual);
+    double residual = -1.0;
+    const double t = projectOntoCurve(kQuarterCircle, diag, diag, &residual);
 
     CHECK(t == doctest::Approx(0.5).epsilon(0.05));
     CHECK(residual == doctest::Approx(0.2).epsilon(0.02));
@@ -244,6 +244,23 @@ TEST_CASE("convertToTFrame rejects keyframes that run backwards along the path")
     const std::vector<KeyframeVelocitiesXandY> forwards = {
         {early.x, early.y, 1.f}, {late.x, late.y, 1.f}};
     CHECK_NOTHROW(convertToTFrame(kQuarterCircle, forwards));
+}
+
+TEST_CASE("requireCubicSegment rejects a segment without exactly four points") {
+    // Every bezier* routine indexes controlPoints[0..3] unconditionally, so a
+    // segment with the wrong count is a heap overflow, not a numerical error.
+    CHECK_THROWS_AS(requireCubicSegment({}), SegmentError);
+    CHECK_THROWS_AS(requireCubicSegment({{0.f, 0.f}, {1.f, 0.f}, {2.f, 0.f}}), SegmentError);
+    CHECK_THROWS_AS(
+        requireCubicSegment({{0.f, 0.f}, {1.f, 0.f}, {2.f, 0.f}, {3.f, 0.f}, {4.f, 0.f}}),
+        SegmentError);
+    CHECK_NOTHROW(requireCubicSegment(kStraight));
+}
+
+TEST_CASE("convertToTFrame rejects a segment without exactly four points") {
+    const std::vector<Point> triangle = {{0.f, 0.f}, {1.f, 0.f}, {2.f, 0.f}};
+    const std::vector<KeyframeVelocitiesXandY> xy = {{0.f, 0.f, 1.f}};
+    CHECK_THROWS_AS(convertToTFrame(triangle, xy), SegmentError);
 }
 
 TEST_CASE("findXandY matches the Bezier definition at the endpoints") {

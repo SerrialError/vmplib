@@ -1,25 +1,29 @@
 #pragma once
+// Internal state is carried in double throughout the library: arc length,
+// accumulated time and pose, and the Newton/quadrature intermediates all
+// accumulate over hundreds of steps, where float rounding is visible. Narrowing
+// to float happens only at the output boundary (see printer.cpp).
 struct Point {
-    float x, y;
+    double x, y;
 };
 
 struct Pose {
-    float x, y, theta;
+    double x, y, theta;
 };
 
 struct Velocities {
-    float linear, angular;
+    double linear, angular;
 };
 
 struct VelocityLayout {
-    float linear, angular, time;
+    double linear, angular, time;
 };
 
 // A target velocity pinned to a Bezier parameter t, not to a wall-clock time.
 struct KeyframeVelocities {
-    float velocity, t;
+    double velocity, t;
 };
 
 struct KeyframeVelocitiesXandY {
-    float x, y, velocity;
+    double x, y, velocity;
 };
