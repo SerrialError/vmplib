@@ -8,7 +8,7 @@
 namespace {
 // A keyframe within this much of t = 0 counts as sitting on the segment join,
 // where the only room to brake for it is in the segment before.
-constexpr float kJunctionKeyframeTolerance = 1e-3f;
+constexpr double kJunctionKeyframeTolerance = 1e-3;
 } // namespace
 
 Trajectory generateTrajectory(
@@ -18,7 +18,7 @@ Trajectory generateTrajectory(
     const ProfileConfig& config
 ) {
     Trajectory out;
-    float timeAccum = 0.0f;
+    double timeAccum = 0.0;
 
     // Refuse every malformed segment up front, before any planning runs, so the
     // caller gets one clear error instead of a heap overflow deep in a bezier*
@@ -38,7 +38,7 @@ Trajectory generateTrajectory(
         }
     }
 
-    float carryOverArcLength = 0.0f;
+    double carryOverArcLength = 0.0;
     bool havePreviousSegment = false;
 
     for (size_t i = 0; i < controlPoints.size(); ++i) {
@@ -47,14 +47,14 @@ Trajectory generateTrajectory(
         // Velocity is continuous across a junction, so a segment starts at
         // whatever the previous one actually ended at. Only the first segment
         // is free to take its start velocity from a keyframe.
-        float initialVel = 0.0f;
+        double initialVel = 0.0;
         if (havePreviousSegment) {
             initialVel = out.velocities.back().back().linear;
         } else if (!keyframes.empty()) {
             initialVel = keyframes.front().velocity;
         }
 
-        float exitVel = keyframes.empty() ? 0.0f : keyframes.back().velocity;
+        double exitVel = keyframes.empty() ? 0.0 : keyframes.back().velocity;
 
         // A keyframe sitting on the first point of the next segment has no room
         // to be met inside that segment, so it is really a constraint on this

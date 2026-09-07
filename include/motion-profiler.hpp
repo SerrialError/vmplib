@@ -7,14 +7,14 @@
 // project was originally tuned against; a different robot overrides them
 // rather than editing the source.
 struct ProfileConfig {
-    float maxVelocity = 1.8885160604f;   // m/s
-    float maxAccel    = 4.12203073382f;  // m/s^2
-    float trackWidth  = 0.29508135f;     // m
+    double maxVelocity = 1.8885160604;   // m/s
+    double maxAccel    = 4.12203073382;  // m/s^2
+    double trackWidth  = 0.29508135;     // m
     // RAMSETE gains. b has units of 1/m^2 so that k = 2*zeta*sqrt(w^2 + b*v^2)
     // comes out in 1/s; zeta is the damping ratio and is dimensionless.
-    float ramseteB    = 2.0f;
-    float ramseteZeta = 0.7f;
-    float dt          = 0.01f;           // s
+    double ramseteB    = 2.0;
+    double ramseteZeta = 0.7;
+    double dt          = 0.01;           // s
 };
 
 // One entry per path segment. poses/velocities are the planned open-loop

@@ -170,8 +170,8 @@ TEST_CASE("projectOntoCurve recovers the parameter of an on-curve point") {
         const float expected = i / 10.f;
         const Pose p = findXandY(kQuarterCircle, expected);
 
-        float residual = -1.f;
-        const float t = projectOntoCurve(kQuarterCircle, p.x, p.y, &residual);
+        double residual = -1.0;
+        const double t = projectOntoCurve(kQuarterCircle, p.x, p.y, &residual);
 
         CAPTURE(expected);
         CHECK(t == doctest::Approx(expected).epsilon(1e-2));
@@ -184,8 +184,8 @@ TEST_CASE("projectOntoCurve reports how far off-path a point is") {
     // at radius 1.2 along the 45-degree ray sits 0.2 outside the curve.
     const float diag = 1.2f / std::sqrt(2.f);
 
-    float residual = -1.f;
-    const float t = projectOntoCurve(kQuarterCircle, diag, diag, &residual);
+    double residual = -1.0;
+    const double t = projectOntoCurve(kQuarterCircle, diag, diag, &residual);
 
     CHECK(t == doctest::Approx(0.5).epsilon(0.05));
     CHECK(residual == doctest::Approx(0.2).epsilon(0.02));

@@ -70,7 +70,7 @@ void loadPaths(
 
         std::istringstream iss(line);
         if (state == State::ReadingPoints) {
-            float x, y;
+            double x, y;
             char comma;
             if (iss >> x >> comma >> y && comma == ',') {
                 currentPoints.push_back(Point{x, y});
@@ -79,7 +79,7 @@ void loadPaths(
             }
         }
         else if (state == State::ReadingVels) {
-            float vx, vy, vz;
+            double vx, vy, vz;
             char c1, c2;
             if (iss >> vx >> c1 >> vy >> c2 >> vz && c1 == ',' && c2 == ',') {
                 currentVels.push_back(KeyframeVelocitiesXandY{vx, vy, vz});

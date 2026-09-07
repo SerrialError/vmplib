@@ -96,9 +96,9 @@ TEST_CASE("angular velocity is consistent with curvature and linear velocity") {
 
     // omega = kappa * v, so |omega| must stay bounded by the worst-case
     // curvature along the path times the commanded speed.
-    float maxKappa = 0.f;
+    double maxKappa = 0.0;
     for (int i = 0; i <= 100; ++i) {
-        maxKappa = std::max(maxKappa, unsignedCurvature(kLongPath, i / 100.f));
+        maxKappa = std::max(maxKappa, unsignedCurvature(kLongPath, i / 100.0));
     }
     for (const auto& v : profile.getVelocities()) {
         CHECK(std::fabs(v.angular) <= maxKappa * kMaxVel + 1e-3f);

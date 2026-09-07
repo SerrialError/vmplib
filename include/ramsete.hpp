@@ -12,11 +12,11 @@ public:
     // start the robot off the path.
     RamseteFollower(const std::vector<Pose>& refPoses,
                     const std::vector<VelocityLayout>& refVels,
-                    float trackWidth,
-                    float bGain,
-                    float zetaGain,
-                    float timeAccum,
-                    float dt,
+                    double trackWidth,
+                    double bGain,
+                    double zetaGain,
+                    double timeAccum,
+                    double dt,
                     bool reverse,
                     std::optional<Pose> initialPose = std::nullopt);
 
@@ -33,15 +33,15 @@ public:
     Pose getCurrentPose() const;
 
 private:
-    float track_width_;
-    float b_gain_;
-    float zeta_gain_;
-    float dt_;
+    double track_width_;
+    double b_gain_;
+    double zeta_gain_;
+    double dt_;
     bool  reverse_;
 
     // Internal state
     Pose  current_pose_;    // robot’s current pose
-    float time_accum_;
+    double time_accum_;
     size_t index_;
 
     // References (set in initialize)
@@ -53,5 +53,5 @@ private:
     std::vector<VelocityLayout> executed_vels_;
 
     // Private helpers
-    static float sinc(float x);
+    static double sinc(double x);
 };

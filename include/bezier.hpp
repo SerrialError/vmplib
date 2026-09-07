@@ -19,23 +19,23 @@ public:
 // routine or to a profile.
 void requireCubicSegment(const std::vector<Point>& controlPoints);
 
-Point bezierDerivative(const std::vector<Point>& controlPoints, float t);
-Point bezierSecondDerivative(const std::vector<Point>& controlPoints, float t);
-float speed(const std::vector<Point>& controlPoints, float t);
-float arcLength(const std::vector<Point>& controlPoints, float a, float b);
-float sFunction(const std::vector<Point>& controlPoints, float t);
+Point bezierDerivative(const std::vector<Point>& controlPoints, double t);
+Point bezierSecondDerivative(const std::vector<Point>& controlPoints, double t);
+double speed(const std::vector<Point>& controlPoints, double t);
+double arcLength(const std::vector<Point>& controlPoints, double a, double b);
+double sFunction(const std::vector<Point>& controlPoints, double t);
 // tGuess seeds the Newton iteration; pass the previous parameter when stepping
 // along a path so the solver starts within one timestep of the answer.
-float findTForS(const std::vector<Point>& controlPoints, float sCurrent, float deltaS,
-                float tGuess = 0.5f);
+double findTForS(const std::vector<Point>& controlPoints, double sCurrent, double deltaS,
+                 double tGuess = 0.5);
 
-Pose findXandY(const std::vector<Point>& controlPoints, float t);
+Pose findXandY(const std::vector<Point>& controlPoints, double t);
 
 // Returns the t minimising ||r(t) - (x, y)||. If residual is non-null it
 // receives the distance from the curve to (x, y), which is how a caller tells
 // an on-path point from one that merely projects somewhere.
-float projectOntoCurve(const std::vector<Point>& controlPoints, float x, float y,
-                       float* residual = nullptr);
+double projectOntoCurve(const std::vector<Point>& controlPoints, double x, double y,
+                        double* residual = nullptr);
 
 // Thrown for a keyframe that cannot be placed on the path: either too far from
 // the curve to be meaningful, or out of order along it.
@@ -50,5 +50,5 @@ std::vector<KeyframeVelocities> convertToTFrame(
     const std::vector<KeyframeVelocitiesXandY>& keyFrameVelocitiesXY
 );
 
-float signedCurvature(const std::vector<Point>& controlPoints, float t);
-float unsignedCurvature(const std::vector<Point>& controlPoints, float t);
+double signedCurvature(const std::vector<Point>& controlPoints, double t);
+double unsignedCurvature(const std::vector<Point>& controlPoints, double t);
