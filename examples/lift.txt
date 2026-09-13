@@ -1,0 +1,14 @@
+// A lift, in metres: raise it to 0.8 m, slowing to 0.3 m/s as it passes the
+// 0.4 m mark, then lower it to 0.2 m.
+//
+//   ./bin/main linear --file examples/lift.txt --max-vel 1.2 --max-accel 3.0
+
+#MOVE-START raise
+#TO 0.8
+#KEYFRAMES-START
+0.0, 1.2
+0.4, 0.3
+0.8, 1.2
+
+#MOVE-START lower
+#TO 0.2

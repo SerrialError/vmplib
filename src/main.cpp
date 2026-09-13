@@ -1,6 +1,7 @@
 #include "cli-args.hpp"
 #include "motion-profiler.hpp"
 #include "file-parser.hpp"
+#include "mechanism-file.hpp"
 #include "printer.hpp"
 #include "types.hpp"
 #include <algorithm>
@@ -17,6 +18,8 @@ constexpr const char* kUsage =
     "  ./main path --file <path> --max-vel <m/s> --max-accel <m/s^2> --track-width <m>\n"
     "              [--dt <s>] [--out <path>] [--format desmos|code]\n"
     "  ./main --file <path> ...   same as `path`\n"
+    "  ./main linear --file <moves> --max-vel <units/s> --max-accel <units/s^2>\n"
+    "              [--dt <s>] [--out <path>] [--format desmos|code]\n"
     "  ./main --help\n";
 
 // --format, checked against the styles every mode can print.
@@ -76,6 +79,33 @@ void runPath(const std::vector<std::string>& args) {
     writeTrajectory(out, traj, format);
 }
 
+// A single axis -- lift, arm, turret, straight drive -- through the moves in
+// --file.
+void runLinear(const std::vector<std::string>& args) {
+    const FlagMap flags = parseFlags(args, {"--file", "--max-vel", "--max-accel", "--dt",
+                                            "--out", "--format"});
+    requireFlags(flags, {"--file", "--max-vel", "--max-accel"});
+    const std::string format = outputFormat(flags);
+
+    ScalarProfileConfig config;
+    config.maxVelocity = numberFlag(flags, "--max-vel");
+    config.maxAccel = numberFlag(flags, "--max-accel");
+    if (const auto dt = numberFlag(flags, "--dt")) {
+        config.dt = *dt;
+    }
+
+    const MoveFile file = loadMoves(flags.at("--file"));
+    const std::vector<ScalarSample> samples =
+        generateScalarMoves(config, file.startPosition, file.moves);
+
+    std::ofstream out = openOutput(flags);
+    if (format == "desmos") {
+        Printer::printScalarSamplesDesmos(out, samples);
+    } else {
+        Printer::printScalarSamplesCode(out, samples);
+    }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -97,6 +127,8 @@ int main(int argc, char* argv[]) {
         const std::string& mode = args.front();
         if (mode == "path") {
             runPath({args.begin() + 1, args.end()});
+        } else if (mode == "linear") {
+            runLinear({args.begin() + 1, args.end()});
         } else if (mode.rfind("--", 0) == 0) {
             // The original form, `./main --file ...`, predates modes and still
             // means `path`.
