@@ -4,6 +4,7 @@
 #include <iosfwd>
 #include <string>
 #include <vector>
+#include "drive-samples.hpp"
 #include "scalar-profile.hpp"
 #include "types.hpp"
 #include "velocity-profiler.hpp"
@@ -38,4 +39,22 @@ namespace Printer {
     // Velocity samples as a C++ initialiser list, one {velocity, accel} per dt:
     //   S = {{v, a},{v, a},...};
     void printVelocitySamplesCode(std::ostream& out, const std::vector<VelocitySample>& samples);
+
+    // The Rust format: a standalone module declaring a sample struct and a
+    //   pub static SAMPLES: &[...] = &[...];
+    // slice of one sample per dt, every value at full f64 precision. Each
+    // sample's acceleration is the one that carries it to the next sample, so a
+    // controller holding a sample for one dt feeds it forward as is; the last
+    // sample carries 0.
+
+    // 1D samples as MotionSample { time, velocity, accel }. Position is left
+    // out.
+    void printScalarSamplesRust(std::ostream& out, const std::vector<ScalarSample>& samples);
+
+    // Velocity samples as the same MotionSample { time, velocity, accel }.
+    void printVelocitySamplesRust(std::ostream& out, const std::vector<VelocitySample>& samples);
+
+    // Drive samples as DriveSample { time, linear_velocity, angular_velocity,
+    // left_velocity, right_velocity, left_accel, right_accel }.
+    void printDriveSamplesRust(std::ostream& out, const std::vector<DriveSample>& samples);
 }
