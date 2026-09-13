@@ -7,6 +7,30 @@
 #include <iomanip>
 #include <ostream>
 
+namespace {
+
+// Prints label[(t, value),...] for one field of any sample carrying a time.
+template <typename Sample>
+void printAgainstTime(
+	std::ostream& out,
+	const char* label,
+	const std::vector<Sample>& samples,
+	double Sample::*field
+) {
+	out << label << "[";
+	for (size_t i = 0; i < samples.size(); ++i) {
+		if (i != 0) out << ",";
+		out << "("
+			<< std::fixed << std::setprecision(6)
+			<< static_cast<float>(samples[i].time) << ","
+			<< static_cast<float>(samples[i].*field)
+			<< ")";
+	}
+	out << "]\n";
+}
+
+} // namespace
+
 namespace Printer {
 
 void printPoseVectorDesmos(
@@ -108,21 +132,9 @@ void printScalarSamplesDesmos(
 	std::ostream& out,
 	const std::vector<ScalarSample>& samples
 ) {
-	const auto printList = [&](const char* label, double ScalarSample::*field) {
-		out << label << "[";
-		for (size_t i = 0; i < samples.size(); ++i) {
-			if (i != 0) out << ",";
-			out << "("
-				<< std::fixed << std::setprecision(6)
-				<< static_cast<float>(samples[i].time) << ","
-				<< static_cast<float>(samples[i].*field)
-				<< ")";
-		}
-		out << "]\n";
-	};
-	printList("P = ", &ScalarSample::position);
-	printList("V = ", &ScalarSample::velocity);
-	printList("A = ", &ScalarSample::accel);
+	printAgainstTime(out, "P = ", samples, &ScalarSample::position);
+	printAgainstTime(out, "V = ", samples, &ScalarSample::velocity);
+	printAgainstTime(out, "A = ", samples, &ScalarSample::accel);
 }
 
 // prints S = {{position, velocity, accel},{position, velocity, accel},...};
@@ -136,6 +148,31 @@ void printScalarSamplesCode(
 		out << "{"
 			<< std::fixed << std::setprecision(6)
 			<< static_cast<float>(samples[i].position) << ", "
+			<< static_cast<float>(samples[i].velocity) << ", "
+			<< static_cast<float>(samples[i].accel)
+			<< "}";
+	}
+	out << "};\n";
+}
+
+void printVelocitySamplesDesmos(
+	std::ostream& out,
+	const std::vector<VelocitySample>& samples
+) {
+	printAgainstTime(out, "V = ", samples, &VelocitySample::velocity);
+	printAgainstTime(out, "A = ", samples, &VelocitySample::accel);
+}
+
+// prints S = {{velocity, accel},{velocity, accel},...};
+void printVelocitySamplesCode(
+	std::ostream& out,
+	const std::vector<VelocitySample>& samples
+) {
+	out << "S = {";
+	for (size_t i = 0; i < samples.size(); ++i) {
+		if (i != 0) out << ",";
+		out << "{"
+			<< std::fixed << std::setprecision(6)
 			<< static_cast<float>(samples[i].velocity) << ", "
 			<< static_cast<float>(samples[i].accel)
 			<< "}";

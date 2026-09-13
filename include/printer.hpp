@@ -6,6 +6,7 @@
 #include <vector>
 #include "scalar-profile.hpp"
 #include "types.hpp"
+#include "velocity-profiler.hpp"
 
 namespace Printer {
 
@@ -29,4 +30,12 @@ namespace Printer {
     // 1D samples as a C++ initialiser list, one {position, velocity, accel} per dt:
     //   S = {{p, v, a},{p, v, a},...};
     void printScalarSamplesCode(std::ostream& out, const std::vector<ScalarSample>& samples);
+
+    // Velocity samples as two Desmos lists against time:
+    //   V = [(t, velocity), ...], A = [(t, accel), ...]
+    void printVelocitySamplesDesmos(std::ostream& out, const std::vector<VelocitySample>& samples);
+
+    // Velocity samples as a C++ initialiser list, one {velocity, accel} per dt:
+    //   S = {{v, a},{v, a},...};
+    void printVelocitySamplesCode(std::ostream& out, const std::vector<VelocitySample>& samples);
 }
