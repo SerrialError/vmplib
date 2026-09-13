@@ -1,0 +1,15 @@
+// A flywheel, in rad/s: spin up to 400 rad/s and hold it for 1.5 s of shooting,
+// drop to 250 rad/s for a second of closer shots, then spin down.
+//
+//   ./bin/main velocity --file examples/flywheel.txt --max-accel 800 --max-vel 450
+
+#TARGET-START spin-up
+#VELOCITY 400
+#HOLD 1.5
+
+#TARGET-START close-shots
+#VELOCITY 250
+#HOLD 1.0
+
+#TARGET-START spin-down
+#VELOCITY 0
