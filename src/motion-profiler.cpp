@@ -1,5 +1,6 @@
 #include "motion-profiler.hpp"
 #include "bezier.hpp"             // convertToTFrame
+#include "config-error.hpp"       // requirePositiveLimit
 #include "motion-profiling.hpp"   // BezierPathProfile
 #include "ramsete.hpp"            // RamseteFollower
 #include <algorithm>
@@ -17,6 +18,11 @@ Trajectory generateTrajectory(
     bool useKeyframes,
     const ProfileConfig& config
 ) {
+    requirePositiveLimit("maxVelocity", config.maxVelocity);
+    requirePositiveLimit("maxAccel", config.maxAccel);
+    requirePositiveLimit("trackWidth", config.trackWidth);
+    requirePositiveLimit("dt", config.dt);
+
     Trajectory out;
     double timeAccum = 0.0;
 

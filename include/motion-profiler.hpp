@@ -31,7 +31,8 @@ struct Trajectory {
 //
 // keyframeList is indexed in parallel with controlPoints, one list per segment,
 // and is ignored unless useKeyframes is set. Throws KeyframeError (bezier.hpp)
-// if a keyframe cannot be placed on its segment.
+// if a keyframe cannot be placed on its segment, and ConfigError
+// (config-error.hpp) if a limit in config is not positive and finite.
 Trajectory generateTrajectory(
     const std::vector<std::vector<Point>>& controlPoints,
     const std::vector<std::vector<KeyframeVelocitiesXandY>>& keyframeList,

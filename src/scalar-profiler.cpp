@@ -1,4 +1,5 @@
 #include "scalar-profiler.hpp"
+#include "config-error.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -16,6 +17,10 @@ std::vector<ScalarSample> generateScalarProfile(
     double endVel,
     std::vector<ScalarKeyframe> keyframes
 ) {
+    requirePositiveLimit("maxVelocity", config.maxVelocity);
+    requirePositiveLimit("maxAccel", config.maxAccel);
+    requirePositiveLimit("dt", config.dt);
+
     if (distance <= 0.0) {
         return {};
     }

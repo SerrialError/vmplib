@@ -23,7 +23,9 @@ struct ScalarProfileConfig {
 //
 // keyframes pin a velocity to a distance along the move. They are sorted by
 // distance here, so the caller need not pre-sort them; fewer than two is
-// treated as none. A distance of zero or less returns no samples.
+// treated as none. A distance of zero or less returns no samples. Throws
+// ConfigError (config-error.hpp) if a limit in config is not positive and
+// finite.
 std::vector<ScalarSample> generateScalarProfile(
     double distance,
     const ScalarProfileConfig& config,
