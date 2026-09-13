@@ -27,3 +27,11 @@ jobs:
       run: ./bin/main linear --file examples/lift.txt --max-vel 1.2 --max-accel 3.0
     - name: run velocity example
       run: ./bin/main velocity --file examples/flywheel.txt --max-accel 800 --max-vel 450
+    - name: compile the Rust output
+      run: |
+        ./bin/main path --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951 --format rust --out path.rs
+        ./bin/main linear --file examples/lift.txt --max-vel 1.2 --max-accel 3.0 --format rust --out linear.rs
+        ./bin/main velocity --file examples/flywheel.txt --max-accel 800 --max-vel 450 --format rust --out velocity.rs
+        for mode in path linear velocity; do
+          rustc --edition 2021 --crate-type lib -D warnings --out-dir "$RUNNER_TEMP" "$mode.rs"
+        done
