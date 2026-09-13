@@ -52,3 +52,39 @@ std::vector<ScalarSample> generateScalarProfile(
     double startVel = 0.0,
     double endVel = 0.0,
     std::vector<ScalarKeyframe> keyframes = {});
+
+// A target speed pinned to a position on the mechanism's axis.
+struct MoveKeyframe {
+    double position;
+    double velocity;   // speed along the direction of travel; never negative
+};
+
+// One leg of a mechanism's motion, from wherever the previous move ended to
+// target. The direction is the sign of the change in position, so lowering a lift
+// is just a target below where it is.
+struct ScalarMove {
+    double target;
+    // Speed at target. The final move lands on it exactly. Between two moves in
+    // the same direction it caps the speed through the join, which comes out
+    // lower if the next move needs the mechanism slower going in. A move followed
+    // by one that reverses must end at rest.
+    double endVelocity = 0.0;
+    // Speeds pinned to positions within this move, in any order. Fewer than two
+    // are treated as none.
+    std::vector<MoveKeyframe> keyframes = {};
+};
+
+// Profile a sequence of moves for one mechanism, starting at rest at
+// startPosition. Returns one sample every dt on a single timestep grid across
+// every move, carrying the absolute position and the signed velocity and
+// acceleration. No moves returns no samples.
+//
+// Throws ConfigError (config-error.hpp) if a limit in config is unset or not
+// positive and finite. Throws MoveError if a move goes nowhere, a speed is
+// negative, a keyframe lies outside its move, a move ends at speed into a
+// reversal, or moves in one direction take longer than the profiler's 60 s
+// watchdog.
+std::vector<ScalarSample> generateScalarMoves(
+    const ScalarProfileConfig& config,
+    double startPosition,
+    const std::vector<ScalarMove>& moves);
