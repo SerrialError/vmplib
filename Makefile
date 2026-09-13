@@ -24,7 +24,7 @@ TEST_LIB_SRCS := $(SRCDIR)/bezier.cpp $(SRCDIR)/scalar-profile.cpp \
                  $(SRCDIR)/motion-profiler.cpp $(SRCDIR)/ramsete.cpp \
                  $(SRCDIR)/file-parser.cpp $(SRCDIR)/cli-args.cpp \
                  $(SRCDIR)/mechanism-file.cpp $(SRCDIR)/printer.cpp \
-                 $(SRCDIR)/velocity-profiler.cpp
+                 $(SRCDIR)/velocity-profiler.cpp $(SRCDIR)/drive-samples.cpp
 TEST_LIB_OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(TEST_LIB_SRCS))
 
 TEST_SRCS := $(wildcard $(TESTDIR)/*.cpp)
