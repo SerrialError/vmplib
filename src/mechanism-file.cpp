@@ -81,10 +81,12 @@ Marker splitMarker(const std::string& line) {
     return Marker{ line.substr(0, gap), trim(line.substr(gap)) };
 }
 
-// Stores a marker's number in slot, which each move may set only once.
-void setOnce(const LineReader& reader, const Marker& marker, std::optional<double>& slot) {
+// Stores a marker's number in slot, which each block (a move, a target) may set
+// only once.
+void setOnce(const LineReader& reader, const Marker& marker, std::optional<double>& slot,
+             const std::string& block) {
     if (slot) {
-        throw reader.error(marker.name + " is given twice in this move");
+        throw reader.error(marker.name + " is given twice in this " + block);
     }
     slot = parseNumber(marker.argument);
     if (!slot) {
@@ -170,11 +172,11 @@ MoveFile loadMoves(const std::string& filename) {
             throw reader.error(marker.name + " must come after a #MOVE-START");
         }
         if (marker.name == "#FROM") {
-            setOnce(reader, marker, pending->from);
+            setOnce(reader, marker, pending->from, "move");
         } else if (marker.name == "#TO") {
-            setOnce(reader, marker, pending->to);
+            setOnce(reader, marker, pending->to, "move");
         } else if (marker.name == "#END-VELOCITY") {
-            setOnce(reader, marker, pending->endVelocity);
+            setOnce(reader, marker, pending->endVelocity, "move");
         } else {
             if (!marker.argument.empty()) {
                 throw reader.error("#KEYFRAMES-START takes no value");
@@ -188,4 +190,59 @@ MoveFile loadMoves(const std::string& filename) {
         throw FileParseError(filename + ": no moves; each move begins with #MOVE-START");
     }
     return file;
+}
+
+std::vector<VelocityTarget> loadVelocityTargets(const std::string& filename) {
+    LineReader reader(filename);
+    std::vector<VelocityTarget> targets;
+
+    // The target being read, until the next #TARGET-START or the end of the file.
+    struct PendingTarget {
+        int line;
+        std::string name;
+        std::optional<double> velocity;
+        std::optional<double> hold;
+    };
+    std::optional<PendingTarget> pending;
+
+    const auto finishTarget = [&]() {
+        if (!pending) {
+            return;
+        }
+        if (!pending->velocity) {
+            const std::string label =
+                pending->name.empty() ? "target" : "target '" + pending->name + "'";
+            throw reader.error(pending->line, label + " has no #VELOCITY");
+        }
+        targets.push_back(VelocityTarget{ *pending->velocity, pending->hold.value_or(0.0) });
+        pending.reset();
+    };
+
+    std::string line;
+    while (reader.next(line)) {
+        if (line[0] != '#') {
+            throw reader.error("expected a #MARKER line, got '" + line + "'");
+        }
+        const Marker marker = splitMarker(line);
+        if (marker.name == "#TARGET-START") {
+            finishTarget();
+            pending = PendingTarget{ reader.lineNumber(), marker.argument, std::nullopt,
+                                     std::nullopt };
+            continue;
+        }
+        if (marker.name != "#VELOCITY" && marker.name != "#HOLD") {
+            throw reader.error("unknown marker " + marker.name);
+        }
+        if (!pending) {
+            throw reader.error(marker.name + " must come after a #TARGET-START");
+        }
+        setOnce(reader, marker, marker.name == "#VELOCITY" ? pending->velocity : pending->hold,
+                "target");
+    }
+    finishTarget();
+
+    if (targets.empty()) {
+        throw FileParseError(filename + ": no targets; each target begins with #TARGET-START");
+    }
+    return targets;
 }

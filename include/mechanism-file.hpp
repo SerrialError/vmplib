@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "scalar-profiler.hpp"
+#include "velocity-profiler.hpp"
 
 // Input files describing what a mechanism should do, written as #MARKER blocks
 // in the style of the path.jerryio export the path parser reads. Whitespace
@@ -32,3 +33,16 @@ struct MoveFile {
 // of. Whether the moves can actually be profiled -- speeds, keyframe placement,
 // reversals -- is checked by generateScalarMoves.
 MoveFile loadMoves(const std::string& filename);
+
+// Reads a velocity file, for a mechanism commanded by speed:
+//
+//   #TARGET-START spin-up  <- begins a target; the name is optional
+//   #VELOCITY 400          <- required: the velocity to ramp to
+//   #HOLD 1.5              <- optional seconds to hold it once reached, default 0
+//   #TARGET-START idle
+//   #VELOCITY 0
+//
+// Throws FileParseError (file-parser.hpp), tagged with the file and line, if
+// the file cannot be opened, holds no targets, or has a line it cannot make
+// sense of. Limits on the targets are checked by generateVelocityProfile.
+std::vector<VelocityTarget> loadVelocityTargets(const std::string& filename);
