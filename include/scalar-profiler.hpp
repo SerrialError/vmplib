@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <vector>
 #include "scalar-profile.hpp"
 
@@ -10,10 +11,13 @@
 // drive, or radians, radians/s, radians/s^2 for a turret or arm. Gearing and
 // motor conversions stay in the caller's robot code; this library only ever
 // sees the axis it is profiling.
+//
+// maxVelocity and maxAccel describe the mechanism, so they start unset and must
+// be supplied. dt defaults to one 10 ms V5 control loop.
 struct ScalarProfileConfig {
-    double maxVelocity;
-    double maxAccel;
-    double dt;
+    std::optional<double> maxVelocity;
+    std::optional<double> maxAccel;
+    double dt = 0.01;
 };
 
 // Profile a straight 1D move of the given distance: accelerate from startVel,
@@ -24,8 +28,8 @@ struct ScalarProfileConfig {
 // keyframes pin a velocity to a distance along the move. They are sorted by
 // distance here, so the caller need not pre-sort them; fewer than two is
 // treated as none. A distance of zero or less returns no samples. Throws
-// ConfigError (config-error.hpp) if a limit in config is not positive and
-// finite.
+// ConfigError (config-error.hpp) if a limit in config is unset or not positive
+// and finite.
 std::vector<ScalarSample> generateScalarProfile(
     double distance,
     const ScalarProfileConfig& config,

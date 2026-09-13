@@ -4,6 +4,7 @@
 #include "scalar-profiler.hpp"
 
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace {
@@ -62,6 +63,47 @@ TEST_CASE("generateTrajectory rejects a limit that is not positive and finite") 
         config.dt = bad;
         CHECK_THROWS_AS(generateTrajectory(kStraight, kNoKeyframes, false, config), ConfigError);
     }
+}
+
+TEST_CASE("a profile refuses to run with a robot limit left unset") {
+    CHECK_THROWS_WITH_AS(generateScalarProfile(1.0, ScalarProfileConfig{std::nullopt, 3.0}),
+                         "maxVelocity is required but was not set", ConfigError);
+    CHECK_THROWS_WITH_AS(generateScalarProfile(1.0, ScalarProfileConfig{1.5, std::nullopt}),
+                         "maxAccel is required but was not set", ConfigError);
+
+    ProfileConfig config = validPathConfig();
+    config.maxVelocity.reset();
+    CHECK_THROWS_WITH_AS(generateTrajectory(kStraight, kNoKeyframes, false, config),
+                         "maxVelocity is required but was not set", ConfigError);
+
+    config = validPathConfig();
+    config.maxAccel.reset();
+    CHECK_THROWS_WITH_AS(generateTrajectory(kStraight, kNoKeyframes, false, config),
+                         "maxAccel is required but was not set", ConfigError);
+
+    config = validPathConfig();
+    config.trackWidth.reset();
+    CHECK_THROWS_WITH_AS(generateTrajectory(kStraight, kNoKeyframes, false, config),
+                         "trackWidth is required but was not set", ConfigError);
+}
+
+TEST_CASE("a default-constructed config carries no robot limits") {
+    const ProfileConfig path;
+    CHECK_FALSE(path.maxVelocity.has_value());
+    CHECK_FALSE(path.maxAccel.has_value());
+    CHECK_FALSE(path.trackWidth.has_value());
+
+    const ScalarProfileConfig scalar;
+    CHECK_FALSE(scalar.maxVelocity.has_value());
+    CHECK_FALSE(scalar.maxAccel.has_value());
+}
+
+TEST_CASE("dt and the RAMSETE gains keep their defaults") {
+    const ProfileConfig path;
+    CHECK(path.dt == doctest::Approx(0.01));
+    CHECK(path.ramseteB == doctest::Approx(2.0));
+    CHECK(path.ramseteZeta == doctest::Approx(0.7));
+    CHECK(ScalarProfileConfig{}.dt == doctest::Approx(0.01));
 }
 
 TEST_CASE("generateTrajectory accepts valid limits") {

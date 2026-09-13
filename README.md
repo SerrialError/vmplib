@@ -26,7 +26,7 @@ With [devenv](https://devenv.sh) and [direnv](https://direnv.net):
 ```bash
 direnv allow    # auto-loads the shell on cd, or run `devenv shell`
 build           # == make all
-run --file examples/path-points.txt
+run --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
 clean           # == make clean
 ```
 
@@ -35,12 +35,16 @@ clean           # == make clean
 ## Command-line use
 
 ```bash
-./bin/main --file examples/path-points.txt
+./bin/main --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--file <path>` | *required* | Path file to profile |
+| `--max-vel <m/s>` | *required* | Top linear speed |
+| `--max-accel <m/s²>` | *required* | Acceleration limit |
+| `--track-width <m>` | *required* | Distance between the left and right wheels |
+| `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
 | `--format desmos\|code` | `desmos` | Output style |
 
@@ -84,14 +88,14 @@ Units are default SI units throughout.
 
 ### Tuning
 
-`ProfileConfig` defaults to the robot this project was originally tuned against.
-Override the fields rather than editing the source.
+The limits that describe your robot have no defaults. `generateTrajectory`
+throws `ConfigError` if one is unset or is not a positive, finite number.
 
 | Field | Default |
 |---|---|
-| `maxVelocity` | 1.8885 m/s |
-| `maxAccel` | 4.1220 m/s² |
-| `trackWidth` | 0.2951 m |
+| `maxVelocity` | *required* (m/s) |
+| `maxAccel` | *required* (m/s²) |
+| `trackWidth` | *required* (m) |
 | `ramseteB` | 2.0 m⁻² |
 | `ramseteZeta` | 0.7 |
 | `dt` | 0.01 s |

@@ -14,17 +14,18 @@
 #include <vector>
 
 int main() {
+    constexpr double maxVelocity = 1.5;  // m/s
     const ScalarProfileConfig config{
-        /*maxVelocity=*/1.5,   // m/s
+        maxVelocity,
         /*maxAccel=*/3.0,      // m/s^2
         /*dt=*/0.01,           // s
     };
 
     // Slow to 0.4 m/s at the 1 m mark, then release back to full speed.
     const std::vector<ScalarKeyframe> keyframes = {
-        {config.maxVelocity, 0.0},
+        {maxVelocity, 0.0},
         {0.4, 1.0},
-        {config.maxVelocity, 2.0},
+        {maxVelocity, 2.0},
     };
 
     const std::vector<ScalarSample> samples =

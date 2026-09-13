@@ -17,8 +17,8 @@ std::vector<ScalarSample> generateScalarProfile(
     double endVel,
     std::vector<ScalarKeyframe> keyframes
 ) {
-    requirePositiveLimit("maxVelocity", config.maxVelocity);
-    requirePositiveLimit("maxAccel", config.maxAccel);
+    const double maxVelocity = requireLimit("maxVelocity", config.maxVelocity);
+    const double maxAccel = requireLimit("maxAccel", config.maxAccel);
     requirePositiveLimit("dt", config.dt);
 
     if (distance <= 0.0) {
@@ -27,7 +27,7 @@ std::vector<ScalarSample> generateScalarProfile(
 
     // One grid node roughly every top-speed timestep of travel, so the velocity
     // ceiling is sampled at least as finely as the output the profiler emits.
-    const double spacing = std::max(config.maxVelocity * config.dt, 1e-6);
+    const double spacing = std::max(maxVelocity * config.dt, 1e-6);
     int nodes = static_cast<int>(std::ceil(distance / spacing)) + 1;
     nodes = std::clamp(nodes, 2, kMaxCeilingNodes);
 
@@ -37,7 +37,7 @@ std::vector<ScalarSample> generateScalarProfile(
     }
     // Flat ceiling: with no path there is no curvature to cap speed, only the
     // top speed. Keyframes are folded in by the profiler.
-    std::vector<double> ceilingVelocities(nodes, config.maxVelocity);
+    std::vector<double> ceilingVelocities(nodes, maxVelocity);
 
     // ScalarProfile sweeps keyframes in order, so they must be sorted by
     // distance.
@@ -47,7 +47,7 @@ std::vector<ScalarSample> generateScalarProfile(
               });
 
     ScalarProfile profile(distance, std::move(ceilingDistances), std::move(ceilingVelocities),
-                          config.maxAccel, startVel, endVel, config.dt, std::move(keyframes));
+                          maxAccel, startVel, endVel, config.dt, std::move(keyframes));
     profile.start();
     while (!profile.isFinished()) {
         profile.step();
