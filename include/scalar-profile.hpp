@@ -11,7 +11,8 @@ struct ScalarKeyframe {
 // One profiled sample along a distance axis. Carried in double like the rest of
 // the library's internal state; narrow to float only at the output boundary.
 struct ScalarSample {
-    double position;   // arc length from the start of the profile
+    double position;   // distance from the start; the 1D API reports it as a
+                       // signed position on the mechanism's axis
     double velocity;
     double accel;      // (velocity - previous velocity) / dt; 0 at the first sample
     double time;

@@ -91,9 +91,35 @@ TEST_CASE("1D keyframes cap velocity at the requested distance and need no pre-s
     CHECK(velNearMid <= 0.3 + 0.05);
 }
 
-TEST_CASE("a non-positive distance yields no samples") {
+TEST_CASE("a zero distance yields no samples") {
     CHECK(generateScalarProfile(0.0, kConfig).empty());
-    CHECK(generateScalarProfile(-1.0, kConfig).empty());
+}
+
+TEST_CASE("a negative distance is the same move made the other way") {
+    // A lift lowering or a turret turning back: identical timing, with position,
+    // velocity and acceleration all mirrored through zero.
+    const std::vector<ScalarKeyframe> keyframes = {{kMaxVel, 0.0}, {0.3, 1.0}, {kMaxVel, 2.0}};
+    const auto forward = generateScalarProfile(2.0, kConfig, 0.2, 0.4, keyframes);
+    const auto reverse = generateScalarProfile(-2.0, kConfig, 0.2, 0.4, keyframes);
+
+    REQUIRE(reverse.size() == forward.size());
+    for (size_t i = 0; i < reverse.size(); ++i) {
+        CAPTURE(i);
+        CHECK(reverse[i].position == doctest::Approx(-forward[i].position));
+        CHECK(reverse[i].velocity == doctest::Approx(-forward[i].velocity));
+        CHECK(reverse[i].accel == doctest::Approx(-forward[i].accel));
+        CHECK(reverse[i].time == doctest::Approx(forward[i].time));
+    }
+    CHECK(reverse.back().position == doctest::Approx(-2.0));
+    CHECK(reverse.back().velocity == doctest::Approx(-0.4));
+}
+
+TEST_CASE("speeds may not be negative, since direction comes from the distance") {
+    CHECK_THROWS_AS(generateScalarProfile(1.0, kConfig, -0.1, 0.0), MoveError);
+    CHECK_THROWS_AS(generateScalarProfile(1.0, kConfig, 0.0, -0.1), MoveError);
+    CHECK_THROWS_AS(generateScalarProfile(-1.0, kConfig, 0.0, 0.0, {{-0.5, 0.0}, {0.5, 1.0}}),
+                    MoveError);
+    CHECK_THROWS_AS(generateScalarProfile(std::nan(""), kConfig), MoveError);
 }
 
 TEST_CASE("the profile is unit-agnostic: scaling the axis scales the profile") {
