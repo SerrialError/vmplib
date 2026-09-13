@@ -52,7 +52,7 @@ Leaving the mode off (`./bin/main --file ...`) also runs `path`.
 | `--track-width <m>` | *required* | Distance between the left and right wheels |
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
-| `--format desmos\|code` | `desmos` | Output style |
+| `--format desmos\|code\|rust` | `desmos` | Output style |
 
 `--format desmos` emits six lists you can paste straight into Desmos:
 
@@ -65,6 +65,23 @@ Leaving the mode off (`./bin/main --file ...`) also runs `path`.
 
 `--format code` emits `P` and `V` as C++ initialiser lists, for pasting into
 robot code that replays a fixed trajectory.
+
+`--format rust` emits a Rust module, for dropping into a robot crate with `mod`.
+It declares a `DriveSample` struct and a `SAMPLES` slice holding one per
+timestep, all `f64` at full precision:
+
+| Field | Contents |
+|---|---|
+| `time` | s |
+| `linear_velocity` | the robot's speed, m/s |
+| `angular_velocity` | the robot's turn rate, rad/s, counterclockwise positive |
+| `left_velocity`, `right_velocity` | each side's speed, `v ∓ ω·w/2`, m/s |
+| `left_accel`, `right_accel` | each side's acceleration, m/s² |
+
+A sample's accelerations are the ones that carry it to the next sample, so a
+controller that holds a sample for one timestep feeds them forward as they are.
+The last sample's are 0. From C++, `driveSamples(traj, config)` in
+`drive-samples.hpp` returns the same samples.
 
 #### Path file format
 
@@ -103,7 +120,7 @@ Units are default SI units throughout.
 | `--max-accel <units/s²>` | *required* | Acceleration limit |
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
-| `--format desmos\|code` | `desmos` | Output style |
+| `--format desmos\|code\|rust` | `desmos` | Output style |
 
 Units are whatever the move file uses, as long as the limits match: metres for
 a lift, radians for an arm or turret. Gearing and motor conversions stay in your
@@ -112,6 +129,10 @@ robot code.
 `--format desmos` emits `P`, `V` and `A` (position, velocity and acceleration),
 each as `(t, value)`. `--format code` emits `S`, a C++ initialiser list with one
 `{position, velocity, accel}` per timestep.
+
+`--format rust` emits a Rust module with a `MotionSample { time, velocity, accel }`
+struct and a `SAMPLES` slice holding one per timestep, as `f64`. Each sample's
+`accel` is the one that carries it to the next sample, and the last sample's is 0.
 
 #### Move file format
 
@@ -159,7 +180,7 @@ const std::vector<ScalarSample> samples =
 | `--max-vel <units/s>` | unset | If set, a target faster than this is an error |
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
-| `--format desmos\|code` | `desmos` | Output style |
+| `--format desmos\|code\|rust` | `desmos` | Output style |
 
 The mechanism starts at rest. It ramps to each target in turn at the
 acceleration limit, landing exactly on it, then holds it for `#HOLD` seconds,
@@ -168,6 +189,7 @@ backwards.
 
 `--format desmos` emits `V` and `A`, each as `(t, value)`. `--format code` emits
 `S`, a C++ initialiser list with one `{velocity, accel}` per timestep.
+`--format rust` emits the same `MotionSample` module as `linear`.
 
 #### Velocity file format
 
