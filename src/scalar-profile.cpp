@@ -12,6 +12,15 @@ constexpr double kWatchdogSeconds = 60.0;
 // Enough for a few seconds of travel at a typical dt, so the common case never
 // reallocates.
 constexpr size_t kExpectedSamples = 1000;
+
+// Room for rounding when checking a braking step against the limit curve, as a
+// fraction of one step's change in speed. A step riding the braking ramp lands
+// on the curve exactly, up to rounding.
+constexpr double kRoundingSlack = 1e-9;
+
+// Halvings when searching for the fastest speed that can still brake in time:
+// enough to pin a speed of a few metres per second to within a picometre.
+constexpr int kSearchSteps = 40;
 } // namespace
 
 ScalarProfile::ScalarProfile(
@@ -24,15 +33,18 @@ ScalarProfile::ScalarProfile(
     double dt,
     std::vector<ScalarKeyframe> keyframes,
     double startDistance,
-    double timeAccum
+    double timeAccum,
+    std::optional<TurnCoupling> turn
 )
     : distance_(distance),
       max_accel_(maxAccel),
       exit_velocity_(endVel),
       dt_(dt),
+      turn_(std::move(turn)),
       limit_s_(std::move(ceilingDistances)),
       s_current_(std::min(std::max(0.0, startDistance), distance)),
       cur_speed_(startVel),
+      cur_curvature_(0.0),
       time_accum_(timeAccum),
       // A carry-over longer than the whole path skips it outright and has to
       // keep travelling into whatever comes next.
@@ -46,11 +58,23 @@ ScalarProfile::ScalarProfile(
     // the backward pass has already worked out what it can do.
     cur_speed_ = std::min(cur_speed_, velocityAt(s_current_));
 
+    if (turn_) {
+        cur_curvature_ = turn_->previousCurvature ? *turn_->previousCurvature
+                                                  : turn_->curvatureAt(s_current_);
+        // Nor can a turn the sides cannot brake into in time. At rest there is
+        // nothing to brake, so a slower start always exists.
+        cur_speed_ = fastestSafeSpeed(s_current_, cur_curvature_, 0.0, cur_speed_);
+    }
+
     samples_.reserve(kExpectedSamples);
 }
 
 double ScalarProfile::overshootDistance() const {
     return overshoot_;
+}
+
+double ScalarProfile::currentCurvature() const {
+    return cur_curvature_;
 }
 
 bool ScalarProfile::isFinished() const {
@@ -171,6 +195,93 @@ double ScalarProfile::velocityAt(double s) const {
     return velocityAtPotential(g0 + (g1 - g0) * lambda);
 }
 
+double ScalarProfile::travelSpeed(double s, double v) const {
+    if (turn_) {
+        return v;
+    }
+    return std::min(velocityAt(s), v + max_accel_ * dt_);
+}
+
+// The sides move at x -+ halfTrack * omega, and max(|p - q|, |p + q|) is
+// |p| + |q|, so both change speed by at most a = maxAccel * dt exactly when the
+// next speed x has
+//
+//   phi(x) = |x - v| + halfTrack * |x * nextKappa - v * kappa| <= a.
+//
+// phi is convex and piecewise linear in x, kinked at v and at
+// m = v * kappa / nextKappa, so it is smallest on a kink and each end of the
+// range lies on a straight piece whose slope is known.
+bool ScalarProfile::stepRange(double v, double kappa, double nextKappa, double& lo,
+                              double& hi) const {
+    const double a = max_accel_ * dt_;
+    const double r = turn_->halfTrack;
+    const auto phi = [&](double x) { return std::abs(x - v) + r * std::abs(x * nextKappa - v * kappa); };
+
+    // With nextKappa 0, or small enough that m overflows, the second term does
+    // not depend on x and v is the only kink.
+    const double m = v * kappa / nextKappa;
+    const bool twoKinks = std::isfinite(m);
+    const double left = twoKinks ? std::min(v, m) : v;
+    const double right = twoKinks ? std::max(v, m) : v;
+    const double phiLeft = phi(left);
+    const double phiRight = phi(right);
+    if (phiLeft > a && phiRight > a) {
+        return false;
+    }
+
+    // Beyond the kinks both terms grow; between them one shrinks.
+    const double outerSlope = 1.0 + r * std::abs(nextKappa);
+    const double innerSlope = (m >= v ? 1.0 : -1.0) * (1.0 - r * std::abs(nextKappa));
+    hi = phiRight <= a ? right + (a - phiRight) / outerSlope
+                       : left + (a - phiLeft) / innerSlope;
+    lo = phiLeft <= a ? left - (a - phiLeft) / outerSlope
+                      : right + (a - phiRight) / innerSlope;
+    return true;
+}
+
+bool ScalarProfile::brakesInTime(double s, double v, double kappa) const {
+    const double slack = kRoundingSlack * max_accel_ * dt_;
+    for (size_t n = step_count_; n < max_steps_; ++n) {
+        // Braking has nothing left to honour once the profile ends, and a robot
+        // at rest can creep on from anywhere.
+        if (s >= distance_ || v <= 0.0) {
+            return true;
+        }
+        const double s_target = s + travelSpeed(s, v) * dt_;
+        const double landed = std::min(s_target, distance_);
+        const double nextKappa = turn_->curvatureAt(landed);
+        double lo = 0.0;
+        double hi = 0.0;
+        if (!stepRange(v, kappa, nextKappa, lo, hi)) {
+            return false;
+        }
+        const double next = std::max(lo, 0.0);
+        if (next > std::min(velocityAt(s_target), hi) + slack) {
+            return false;
+        }
+        s = landed;
+        v = next;
+        kappa = nextKappa;
+    }
+    return false;
+}
+
+double ScalarProfile::fastestSafeSpeed(double s, double kappa, double floor, double cap) const {
+    if (cap <= floor) {
+        return floor;
+    }
+    if (brakesInTime(s, cap, kappa)) {
+        return cap;
+    }
+    double safe = floor;
+    double unsafe = cap;
+    for (int i = 0; i < kSearchSteps; ++i) {
+        const double mid = 0.5 * (safe + unsafe);
+        (brakesInTime(s, mid, kappa) ? safe : unsafe) = mid;
+    }
+    return safe;
+}
+
 void ScalarProfile::start() {
     samples_.push_back(ScalarSample{ s_current_, cur_speed_, 0.0, time_accum_ });
 }
@@ -179,10 +290,9 @@ void ScalarProfile::step() {
     ++step_count_;
     time_accum_ += dt_;
 
-    // The robot crosses the step at the speed it is holding where the step
-    // begins. The limit curve caps deceleration; the acceleration cap is the
-    // forward pass, applied here one timestep at a time.
-    const double travel_speed = std::min(velocityAt(s_current_), accelerationLimit());
+    // The limit curve caps deceleration; the acceleration cap is the forward
+    // pass, applied here one timestep at a time.
+    const double travel_speed = travelSpeed(s_current_, cur_speed_);
 
     // The step that ends the path lands past the end. Record by how much so a
     // caller stitching the next profile on can start there instead of
@@ -198,7 +308,19 @@ void ScalarProfile::step() {
     // on the endpoint, where the curve has already fallen to the exit velocity
     // while the departing speed has not. That is why a path planned to stop used
     // to trail off at a tenth of a metre per second instead of at rest.
-    const double next_speed = std::min(velocityAt(s_target), accelerationLimit());
+    double next_speed = std::min(velocityAt(s_target), accelerationLimit());
+    if (turn_) {
+        // This step starts from a speed brakesInTime accepted, so braking from
+        // it proved there is a next speed in range that can brake in time too:
+        // the range is never empty and floor is always safe.
+        const double nextKappa = turn_->curvatureAt(landed);
+        double lo = 0.0;
+        double hi = 0.0;
+        stepRange(cur_speed_, cur_curvature_, nextKappa, lo, hi);
+        next_speed = fastestSafeSpeed(landed, nextKappa, std::max(lo, 0.0),
+                                      std::min(velocityAt(s_target), hi));
+        cur_curvature_ = nextKappa;
+    }
     const double accel = (next_speed - cur_speed_) / dt_;
 
     samples_.push_back(ScalarSample{ landed, next_speed, accel, time_accum_ });

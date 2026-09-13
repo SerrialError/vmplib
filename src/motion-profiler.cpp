@@ -4,6 +4,7 @@
 #include "motion-profiling.hpp"   // BezierPathProfile
 #include "ramsete.hpp"            // RamseteFollower
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 namespace {
@@ -45,6 +46,9 @@ Trajectory generateTrajectory(
     }
 
     double carryOverArcLength = 0.0;
+    // Curvature at the last sample planned, which the next segment's first step
+    // turns from. Unset until there is one.
+    std::optional<double> previousCurvature;
     bool havePreviousSegment = false;
 
     for (size_t i = 0; i < controlPoints.size(); ++i) {
@@ -86,7 +90,8 @@ Trajectory generateTrajectory(
             keyframes,
             useKeyframes,
             config.dt,
-            carryOverArcLength
+            carryOverArcLength,
+            previousCurvature
         );
 
         // Only the first segment emits a sample at its start pose. For the rest
@@ -100,6 +105,8 @@ Trajectory generateTrajectory(
         }
 
         carryOverArcLength = profiler.overshootArcLength();
+        // A segment with no samples hands back the curvature it was given.
+        previousCurvature = profiler.endCurvature();
         if (profiler.getVelocities().empty()) {
             // The carry-over covered this segment whole, so it produced no
             // samples. The remainder rolls on to the next one.

@@ -48,7 +48,7 @@ Leaving the mode off (`./bin/main --file ...`) also runs `path`.
 |---|---|---|
 | `--file <path>` | *required* | Path file to profile |
 | `--max-vel <m/s>` | *required* | Top linear speed |
-| `--max-accel <m/s²>` | *required* | Acceleration limit |
+| `--max-accel <m/s²>` | *required* | Acceleration limit for each side of the drivetrain |
 | `--track-width <m>` | *required* | Distance between the left and right wheels |
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
