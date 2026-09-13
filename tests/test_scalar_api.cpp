@@ -138,3 +138,8 @@ TEST_CASE("the profile is unit-agnostic: scaling the axis scales the profile") {
         CHECK(turret[i].velocity == doctest::Approx(2.0 * drive[i].velocity).epsilon(1e-6));
     }
 }
+
+TEST_CASE("a move longer than the profiler's watchdog throws instead of stopping short") {
+    // 1000 m at 1 m/s takes far longer than the 60 s the profiler steps for.
+    CHECK_THROWS_AS(generateScalarProfile(1000.0, ScalarProfileConfig{1.0, 3.0}), MoveError);
+}

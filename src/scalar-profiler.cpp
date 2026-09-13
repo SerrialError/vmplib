@@ -26,17 +26,23 @@ double signedValue(double direction, double magnitude) {
     return magnitude == 0.0 ? 0.0 : direction * magnitude;
 }
 
-// Runs profile to completion and appends its samples to out, placed on the axis
-// at origin + direction * (distance travelled). emitStart is false for a
-// profile that continues from out's last sample, which already covers its
-// starting point.
-void appendSamples(ScalarProfile& profile, bool emitStart, double origin, double direction,
-                   std::vector<ScalarSample>& out) {
+// Runs profile, which covers length, to completion and appends its samples to
+// out, placed on the axis at origin + direction * (distance travelled).
+// emitStart is false for a profile that continues from out's last sample, which
+// already covers its starting point.
+void appendSamples(ScalarProfile& profile, double length, bool emitStart, double origin,
+                   double direction, std::vector<ScalarSample>& out) {
     if (emitStart) {
         profile.start();
     }
     while (!profile.isFinished()) {
         profile.step();
+    }
+    // isFinished() is also true once the profiler's step watchdog trips.
+    // Returning those samples would hand back a move that silently stops short.
+    if (!profile.samples().empty() && profile.samples().back().position < length) {
+        throw MoveError("the move did not reach its end before the profiler's 60 s "
+                        "watchdog stopped it");
     }
     for (const ScalarSample& s : profile.samples()) {
         out.push_back(ScalarSample{ origin + direction * s.position,
@@ -95,6 +101,6 @@ std::vector<ScalarSample> generateScalarProfile(
     ScalarProfile profile(length, std::move(ceilingDistances), std::move(ceilingVelocities),
                           maxAccel, startVel, endVel, config.dt, std::move(keyframes));
     std::vector<ScalarSample> samples;
-    appendSamples(profile, true, 0.0, direction, samples);
+    appendSamples(profile, length, true, 0.0, direction, samples);
     return samples;
 }

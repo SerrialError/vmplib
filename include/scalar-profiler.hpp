@@ -44,8 +44,8 @@ public:
 // than two is treated as none. A distance of zero returns no samples.
 //
 // Throws ConfigError (config-error.hpp) if a limit in config is unset or not
-// positive and finite, and MoveError if a speed is negative or a value is not
-// finite.
+// positive and finite, and MoveError if a speed is negative, a value is not
+// finite, or the move takes longer than the profiler's 60 s watchdog.
 std::vector<ScalarSample> generateScalarProfile(
     double distance,
     const ScalarProfileConfig& config,
