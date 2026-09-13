@@ -21,3 +21,7 @@ jobs:
       run: ./bin/main path --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
     - name: run path example without a mode
       run: ./bin/main --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
+    - name: build examples
+      run: make example WARNINGS="-Wall -Wextra -Wshadow -Werror"
+    - name: run linear example
+      run: ./bin/main linear --file examples/lift.txt --max-vel 1.2 --max-accel 3.0
