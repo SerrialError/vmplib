@@ -2,6 +2,7 @@
 #include "config-error.hpp"
 #include "drive-samples.hpp"
 
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -113,5 +114,41 @@ TEST_CASE("driveSamples rejects a track width or dt that is not positive and fin
         ProfileConfig badDt = config();
         badDt.dt = bad;
         CHECK_THROWS_AS(driveSamples(traj, badDt), ConfigError);
+    }
+}
+
+TEST_CASE("no side is asked to accelerate faster than the limit") {
+    // The path in examples/path-points.txt with the README's limits. Limiting
+    // only the centre asked its outer side for 7.9 m/s^2 against 4.122.
+    const std::vector<std::vector<Point>> example = {
+        {{-0.586, -0.41}, {-0.586, -0.201}, {-0.997, 0.335}, {-0.997, 0.544}}};
+    ProfileConfig exampleConfig;
+    exampleConfig.maxVelocity = 1.8885;
+    exampleConfig.maxAccel = 4.1220;
+    exampleConfig.trackWidth = 0.2951;
+
+    struct Case {
+        const char* name;
+        const std::vector<std::vector<Point>>* path;
+        ProfileConfig config;
+    };
+    const Case cases[] = {
+        {"the example path", &example, exampleConfig},
+        {"two S-curves", &kTwoSegments, config()},
+    };
+
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        const std::vector<std::vector<KeyframeVelocitiesXandY>> noKeyframes(c.path->size());
+        const Trajectory traj = generateTrajectory(*c.path, noKeyframes, false, c.config);
+        const std::vector<DriveSample> samples = driveSamples(traj, c.config);
+        REQUIRE(samples.size() > 1);
+
+        const double limit = *c.config.maxAccel * (1.0 + 1e-9);
+        for (const DriveSample& s : samples) {
+            CAPTURE(s.time);
+            CHECK(std::fabs(s.leftAccel) <= limit);
+            CHECK(std::fabs(s.rightAccel) <= limit);
+        }
     }
 }
