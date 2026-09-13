@@ -17,5 +17,7 @@ jobs:
       run: make all WARNINGS="-Wall -Wextra -Wshadow -Werror"
     - name: test
       run: make test WARNINGS="-Wall -Wextra -Wshadow -Werror"
-    - name: run example
+    - name: run path example
+      run: ./bin/main path --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
+    - name: run path example without a mode
       run: ./bin/main --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
