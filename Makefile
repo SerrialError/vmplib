@@ -22,7 +22,8 @@ OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 TEST_LIB_SRCS := $(SRCDIR)/bezier.cpp $(SRCDIR)/scalar-profile.cpp \
                  $(SRCDIR)/scalar-profiler.cpp $(SRCDIR)/motion-profiling.cpp \
                  $(SRCDIR)/motion-profiler.cpp $(SRCDIR)/ramsete.cpp \
-                 $(SRCDIR)/file-parser.cpp $(SRCDIR)/cli-args.cpp
+                 $(SRCDIR)/file-parser.cpp $(SRCDIR)/cli-args.cpp \
+                 $(SRCDIR)/mechanism-file.cpp
 TEST_LIB_OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(TEST_LIB_SRCS))
 
 TEST_SRCS := $(wildcard $(TESTDIR)/*.cpp)
