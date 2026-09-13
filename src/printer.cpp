@@ -103,4 +103,43 @@ void printVelocityVectorCode(
 
 	out << "};\n";
 }
+
+void printScalarSamplesDesmos(
+	std::ostream& out,
+	const std::vector<ScalarSample>& samples
+) {
+	const auto printList = [&](const char* label, double ScalarSample::*field) {
+		out << label << "[";
+		for (size_t i = 0; i < samples.size(); ++i) {
+			if (i != 0) out << ",";
+			out << "("
+				<< std::fixed << std::setprecision(6)
+				<< static_cast<float>(samples[i].time) << ","
+				<< static_cast<float>(samples[i].*field)
+				<< ")";
+		}
+		out << "]\n";
+	};
+	printList("P = ", &ScalarSample::position);
+	printList("V = ", &ScalarSample::velocity);
+	printList("A = ", &ScalarSample::accel);
+}
+
+// prints S = {{position, velocity, accel},{position, velocity, accel},...};
+void printScalarSamplesCode(
+	std::ostream& out,
+	const std::vector<ScalarSample>& samples
+) {
+	out << "S = {";
+	for (size_t i = 0; i < samples.size(); ++i) {
+		if (i != 0) out << ",";
+		out << "{"
+			<< std::fixed << std::setprecision(6)
+			<< static_cast<float>(samples[i].position) << ", "
+			<< static_cast<float>(samples[i].velocity) << ", "
+			<< static_cast<float>(samples[i].accel)
+			<< "}";
+	}
+	out << "};\n";
+}
 }

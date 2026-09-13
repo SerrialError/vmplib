@@ -4,6 +4,7 @@
 #include <iosfwd>
 #include <string>
 #include <vector>
+#include "scalar-profile.hpp"
 #include "types.hpp"
 
 namespace Printer {
@@ -20,4 +21,12 @@ namespace Printer {
                                    const std::string& whichField);
     void printVelocityVectorCode(std::ostream& out, const std::string& label,
                                  const std::vector<std::vector<VelocityLayout>>& vels);
+
+    // 1D samples as three Desmos lists against time:
+    //   P = [(t, position), ...], V = [(t, velocity), ...], A = [(t, accel), ...]
+    void printScalarSamplesDesmos(std::ostream& out, const std::vector<ScalarSample>& samples);
+
+    // 1D samples as a C++ initialiser list, one {position, velocity, accel} per dt:
+    //   S = {{p, v, a},{p, v, a},...};
+    void printScalarSamplesCode(std::ostream& out, const std::vector<ScalarSample>& samples);
 }
