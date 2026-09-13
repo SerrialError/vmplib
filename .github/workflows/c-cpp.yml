@@ -18,4 +18,4 @@ jobs:
     - name: test
       run: make test WARNINGS="-Wall -Wextra -Wshadow -Werror"
     - name: run example
-      run: ./bin/main --file examples/path-points.txt
+      run: ./bin/main --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951

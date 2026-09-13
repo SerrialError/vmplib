@@ -1,5 +1,6 @@
 #include "motion-profiler.hpp"
 #include "bezier.hpp"             // convertToTFrame
+#include "config-error.hpp"       // requireLimit
 #include "motion-profiling.hpp"   // BezierPathProfile
 #include "ramsete.hpp"            // RamseteFollower
 #include <algorithm>
@@ -17,6 +18,11 @@ Trajectory generateTrajectory(
     bool useKeyframes,
     const ProfileConfig& config
 ) {
+    const double maxVelocity = requireLimit("maxVelocity", config.maxVelocity);
+    const double maxAccel = requireLimit("maxAccel", config.maxAccel);
+    const double trackWidth = requireLimit("trackWidth", config.trackWidth);
+    requirePositiveLimit("dt", config.dt);
+
     Trajectory out;
     double timeAccum = 0.0;
 
@@ -71,9 +77,9 @@ Trajectory generateTrajectory(
         // previous segment's last timestep overshot the join.
         BezierPathProfile profiler(
             controlPoints[i],
-            config.maxVelocity,
-            config.maxAccel,
-            config.trackWidth,
+            maxVelocity,
+            maxAccel,
+            trackWidth,
             timeAccum,
             initialVel,
             exitVel,
@@ -106,7 +112,7 @@ Trajectory generateTrajectory(
         RamseteFollower follower(
             profiler.getPoses(),
             profiler.getVelocities(),
-            config.trackWidth,
+            trackWidth,
             config.ramseteB,
             config.ramseteZeta,
             timeAccum,
