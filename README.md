@@ -26,7 +26,7 @@ With [devenv](https://devenv.sh) and [direnv](https://direnv.net):
 ```bash
 direnv allow    # auto-loads the shell on cd, or run `devenv shell`
 build           # == make all
-run --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
+run path --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
 clean           # == make clean
 ```
 
@@ -34,9 +34,15 @@ clean           # == make clean
 
 ## Command-line use
 
+`bin/main` takes a mode, then that mode's flags. `./bin/main --help` lists them.
+
+### `path`: a differential drive along a Bézier path
+
 ```bash
-./bin/main --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
+./bin/main path --file examples/path-points.txt --max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951
 ```
+
+Leaving the mode off (`./bin/main --file ...`) also runs `path`.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -60,7 +66,7 @@ clean           # == make clean
 `--format code` emits `P` and `V` as C++ initialiser lists, for pasting into
 robot code that replays a fixed trajectory.
 
-### Path file format
+#### Path file format
 
 Plain text, one block per segment. This is the export format of
 [path.jerryio](https://path.jerryio.com), so a file saved from there works

@@ -1,33 +1,40 @@
+#include "cli-args.hpp"
 #include "motion-profiler.hpp"
 #include "file-parser.hpp"
 #include "printer.hpp"
 #include "types.hpp"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
-#include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace {
 
-void printUsage() {
-    std::cerr << "Usage: ./main --file <path> --max-vel <m/s> --max-accel <m/s^2>\n"
-                 "              --track-width <m> [--dt <s>] [--out <path>]\n"
-                 "              [--format desmos|code]\n";
+constexpr const char* kUsage =
+    "Usage:\n"
+    "  ./main path --file <path> --max-vel <m/s> --max-accel <m/s^2> --track-width <m>\n"
+    "              [--dt <s>] [--out <path>] [--format desmos|code]\n"
+    "  ./main --file <path> ...   same as `path`\n"
+    "  ./main --help\n";
+
+// --format, checked against the styles every mode can print.
+std::string outputFormat(const FlagMap& flags) {
+    const std::string format = stringFlag(flags, "--format", "desmos");
+    if (format != "desmos" && format != "code") {
+        throw CliError("--format must be 'desmos' or 'code'");
+    }
+    return format;
 }
 
-// Reads the whole of text as a number, so "1.5m" or "" is an error instead of a
-// silently truncated 1.5 or 0.
-std::optional<double> parseNumber(const std::string& text) {
-    try {
-        size_t used = 0;
-        const double value = std::stod(text, &used);
-        if (used == text.size()) {
-            return value;
-        }
-    } catch (const std::exception&) {
+std::ofstream openOutput(const FlagMap& flags) {
+    const std::string path = stringFlag(flags, "--out", "output.txt");
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("cannot open " + path + " for writing");
     }
-    return std::nullopt;
+    return out;
 }
 
 void writeTrajectory(std::ostream& out, const Trajectory& traj, const std::string& format) {
@@ -44,81 +51,62 @@ void writeTrajectory(std::ostream& out, const Trajectory& traj, const std::strin
     }
 }
 
+// A differential drive along the Bezier path in --file.
+void runPath(const std::vector<std::string>& args) {
+    const FlagMap flags = parseFlags(args, {"--file", "--max-vel", "--max-accel",
+                                            "--track-width", "--dt", "--out", "--format"});
+    requireFlags(flags, {"--file", "--max-vel", "--max-accel", "--track-width"});
+    const std::string format = outputFormat(flags);
+
+    ProfileConfig config;
+    config.maxVelocity = numberFlag(flags, "--max-vel");
+    config.maxAccel = numberFlag(flags, "--max-accel");
+    config.trackWidth = numberFlag(flags, "--track-width");
+    if (const auto dt = numberFlag(flags, "--dt")) {
+        config.dt = *dt;
+    }
+
+    std::vector<std::vector<Point>> controlPoints;
+    std::vector<std::vector<KeyframeVelocitiesXandY>> keyframeList;
+    loadPaths(flags.at("--file"), controlPoints, keyframeList);
+
+    const Trajectory traj = generateTrajectory(controlPoints, keyframeList, true, config);
+
+    std::ofstream out = openOutput(flags);
+    writeTrajectory(out, traj, format);
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
-    std::string filename;
-    std::string outPath = "output.txt";
-    std::string format = "desmos";
-    ProfileConfig config;
+    const std::vector<std::string> args(argv + 1, argv + argc);
 
-    for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
-        const bool hasValue = i + 1 < argc;
-        if (arg == "--file" && hasValue) {
-            filename = argv[++i];
-        } else if (arg == "--out" && hasValue) {
-            outPath = argv[++i];
-        } else if (arg == "--format" && hasValue) {
-            format = argv[++i];
-        } else if ((arg == "--max-vel" || arg == "--max-accel" || arg == "--track-width" ||
-                    arg == "--dt") && hasValue) {
-            const std::string text = argv[++i];
-            const std::optional<double> value = parseNumber(text);
-            if (!value) {
-                std::cerr << "error: " << arg << " expects a number, got '" << text << "'\n";
-                return 1;
-            }
-            if (arg == "--max-vel") {
-                config.maxVelocity = *value;
-            } else if (arg == "--max-accel") {
-                config.maxAccel = *value;
-            } else if (arg == "--track-width") {
-                config.trackWidth = *value;
-            } else {
-                config.dt = *value;
-            }
-        } else {
-            std::cerr << "error: unrecognised argument '" << arg << "'\n";
-            printUsage();
-            return 1;
-        }
-    }
-
-    // Report every missing flag at once rather than making the user rerun once
-    // per flag.
-    std::vector<std::string> missing;
-    if (filename.empty()) missing.push_back("--file");
-    if (!config.maxVelocity) missing.push_back("--max-vel");
-    if (!config.maxAccel) missing.push_back("--max-accel");
-    if (!config.trackWidth) missing.push_back("--track-width");
-    if (!missing.empty()) {
-        std::cerr << "error: missing required";
-        for (const std::string& flag : missing) {
-            std::cerr << " " << flag;
-        }
-        std::cerr << "\n";
-        printUsage();
-        return 1;
-    }
-    if (format != "desmos" && format != "code") {
-        std::cerr << "error: --format must be 'desmos' or 'code'\n";
-        return 1;
+    // A bare "help" only counts as the mode; anywhere else it could be a value,
+    // such as --out help.
+    const auto isHelpFlag = [](const std::string& arg) { return arg == "--help" || arg == "-h"; };
+    if (std::any_of(args.begin(), args.end(), isHelpFlag) ||
+        (!args.empty() && args.front() == "help")) {
+        std::cout << kUsage;
+        return 0;
     }
 
     try {
-        std::vector<std::vector<Point>> controlPoints;
-        std::vector<std::vector<KeyframeVelocitiesXandY>> keyframeList;
-        loadPaths(filename, controlPoints, keyframeList);
-
-        const Trajectory traj = generateTrajectory(controlPoints, keyframeList, true, config);
-
-        std::ofstream out(outPath);
-        if (!out) {
-            std::cerr << "error: cannot open " << outPath << " for writing\n";
-            return 1;
+        if (args.empty()) {
+            throw CliError("no mode given");
         }
-        writeTrajectory(out, traj, format);
+        const std::string& mode = args.front();
+        if (mode == "path") {
+            runPath({args.begin() + 1, args.end()});
+        } else if (mode.rfind("--", 0) == 0) {
+            // The original form, `./main --file ...`, predates modes and still
+            // means `path`.
+            runPath(args);
+        } else {
+            throw CliError("unknown mode '" + mode + "'");
+        }
+    } catch (const CliError& e) {
+        std::cerr << "error: " << e.what() << "\n" << kUsage;
+        return 1;
     } catch (const std::exception& e) {
         std::cerr << "error: " << e.what() << "\n";
         return 1;
