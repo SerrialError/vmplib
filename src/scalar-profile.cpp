@@ -66,8 +66,8 @@ double ScalarProfile::accelerationLimit() const {
     return cur_speed_ + (max_accel_ * dt_);
 }
 
-double ScalarProfile::keyframeCeiling(double s, const std::vector<ScalarKeyframe>& keyframes,
-                                      size_t& idx) const {
+double keyframeVelocityCeiling(double s, const std::vector<ScalarKeyframe>& keyframes,
+                               size_t& idx) {
     if (keyframes.size() < 2) {
         return std::numeric_limits<double>::infinity();
     }
@@ -115,7 +115,7 @@ void ScalarProfile::buildVelocityLimits(const std::vector<double>& ceilingVeloci
     size_t kfIdx = 0;
     for (size_t i = 0; i < n; i++) {
         limit_v_[i] = std::min(ceilingVelocities[i],
-                               keyframeCeiling(limit_s_[i], keyframes, kfIdx));
+                               keyframeVelocityCeiling(limit_s_[i], keyframes, kfIdx));
     }
 
     // Backward pass, swept from the end. This is what makes the profile slow

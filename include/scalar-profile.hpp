@@ -11,11 +11,21 @@ struct ScalarKeyframe {
 // One profiled sample along a distance axis. Carried in double like the rest of
 // the library's internal state; narrow to float only at the output boundary.
 struct ScalarSample {
-    double position;   // arc length from the start of the profile
+    double position;   // distance from the start; the 1D API reports it as a
+                       // signed position on the mechanism's axis
     double velocity;
     double accel;      // (velocity - previous velocity) / dt; 0 at the first sample
     double time;
 };
+
+// The velocity cap a list of keyframes imposes at distance s. Speeds are
+// interpolated in v^2 between the pair bracketing s, which makes each interval a
+// constant-acceleration segment, and held at the first or last keyframe's speed
+// outside them. Fewer than two keyframes impose no cap (infinity). keyframes must
+// be sorted by distance; idx is carried across calls so a monotonic sweep does
+// not rescan the list.
+double keyframeVelocityCeiling(double s, const std::vector<ScalarKeyframe>& keyframes,
+                               size_t& idx);
 
 // Forward/backward velocity profiling over a scalar arc length.
 //
@@ -84,11 +94,6 @@ private:
     // Speed reachable in one timestep from the current speed under the
     // acceleration limit.
     double accelerationLimit() const;
-
-    // Velocity cap imposed by the keyframes bracketing s. idx is carried across
-    // calls so a monotonic sweep does not rescan the list.
-    double keyframeCeiling(double s, const std::vector<ScalarKeyframe>& keyframes,
-                           size_t& idx) const;
 
     // The braking ramp expressed as a potential that is linear in arc length.
     // v^2 alone is the continuous ramp, which a fixed timestep cannot follow;
