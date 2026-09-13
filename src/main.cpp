@@ -4,6 +4,7 @@
 #include "mechanism-file.hpp"
 #include "printer.hpp"
 #include "types.hpp"
+#include "velocity-profiler.hpp"
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -19,6 +20,8 @@ constexpr const char* kUsage =
     "              [--dt <s>] [--out <path>] [--format desmos|code]\n"
     "  ./main --file <path> ...   same as `path`\n"
     "  ./main linear --file <moves> --max-vel <units/s> --max-accel <units/s^2>\n"
+    "              [--dt <s>] [--out <path>] [--format desmos|code]\n"
+    "  ./main velocity --file <targets> --max-accel <units/s^2> [--max-vel <units/s>]\n"
     "              [--dt <s>] [--out <path>] [--format desmos|code]\n"
     "  ./main --help\n";
 
@@ -106,6 +109,32 @@ void runLinear(const std::vector<std::string>& args) {
     }
 }
 
+// A mechanism commanded by speed -- flywheel, roller, intake -- through the
+// velocity targets in --file.
+void runVelocity(const std::vector<std::string>& args) {
+    const FlagMap flags = parseFlags(args, {"--file", "--max-accel", "--max-vel", "--dt",
+                                            "--out", "--format"});
+    requireFlags(flags, {"--file", "--max-accel"});
+    const std::string format = outputFormat(flags);
+
+    VelocityProfileConfig config;
+    config.maxAccel = numberFlag(flags, "--max-accel");
+    config.maxVelocity = numberFlag(flags, "--max-vel");
+    if (const auto dt = numberFlag(flags, "--dt")) {
+        config.dt = *dt;
+    }
+
+    const std::vector<VelocitySample> samples =
+        generateVelocityProfile(config, loadVelocityTargets(flags.at("--file")));
+
+    std::ofstream out = openOutput(flags);
+    if (format == "desmos") {
+        Printer::printVelocitySamplesDesmos(out, samples);
+    } else {
+        Printer::printVelocitySamplesCode(out, samples);
+    }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -129,6 +158,8 @@ int main(int argc, char* argv[]) {
             runPath({args.begin() + 1, args.end()});
         } else if (mode == "linear") {
             runLinear({args.begin() + 1, args.end()});
+        } else if (mode == "velocity") {
+            runVelocity({args.begin() + 1, args.end()});
         } else if (mode.rfind("--", 0) == 0) {
             // The original form, `./main --file ...`, predates modes and still
             // means `path`.

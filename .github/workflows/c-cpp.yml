@@ -25,3 +25,5 @@ jobs:
       run: make example WARNINGS="-Wall -Wextra -Wshadow -Werror"
     - name: run linear example
       run: ./bin/main linear --file examples/lift.txt --max-vel 1.2 --max-accel 3.0
+    - name: run velocity example
+      run: ./bin/main velocity --file examples/flywheel.txt --max-accel 800 --max-vel 450

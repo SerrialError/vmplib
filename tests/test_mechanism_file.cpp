@@ -21,6 +21,19 @@ void checkLoadError(const std::string& contents, const std::string& message) {
     CHECK(error == file.path + message);
 }
 
+// The same, for a velocity file.
+void checkVelocityLoadError(const std::string& contents, const std::string& message) {
+    CAPTURE(contents);
+    ScratchFile file(contents);
+    std::string error;
+    try {
+        loadVelocityTargets(file.path);
+    } catch (const FileParseError& e) {
+        error = e.what();
+    }
+    CHECK(error == file.path + message);
+}
+
 } // namespace
 
 TEST_CASE("loadMoves reads moves, keyframes and comments") {
@@ -104,4 +117,48 @@ TEST_CASE("loadMoves rejects a keyframe that is not exactly 'position, speed'") 
 TEST_CASE("loadMoves rejects a file with no moves, or one it cannot open") {
     checkLoadError("// nothing here\n\n", ": no moves; each move begins with #MOVE-START");
     CHECK_THROWS_AS(loadMoves("/tmp/vmplib_does_not_exist_zzz.txt"), FileParseError);
+}
+
+TEST_CASE("loadVelocityTargets reads targets, holds and comments") {
+    ScratchFile file(
+        "// Spin up, hold for the shot, spin down.\n"
+        "#TARGET-START spin-up\n"
+        "#VELOCITY 400    // rad/s\n"
+        "#HOLD 1.5\n"
+        "\n"
+        "#TARGET-START reverse\n"
+        "#VELOCITY -120\n"
+        "#TARGET-START\n"
+        "#HOLD 0.25\n"
+        "#VELOCITY 0\n");
+
+    const std::vector<VelocityTarget> targets = loadVelocityTargets(file.path);
+    REQUIRE(targets.size() == 3);
+    CHECK(targets[0].velocity == doctest::Approx(400.0));
+    CHECK(targets[0].hold == doctest::Approx(1.5));
+    CHECK(targets[1].velocity == doctest::Approx(-120.0));
+    CHECK(targets[1].hold == 0.0);
+    CHECK(targets[2].velocity == 0.0);
+    CHECK(targets[2].hold == doctest::Approx(0.25));
+}
+
+TEST_CASE("a loaded velocity file profiles end to end") {
+    ScratchFile file("#TARGET-START\n#VELOCITY 400\n#HOLD 0.1\n#TARGET-START\n#VELOCITY 0\n");
+    const auto samples = generateVelocityProfile(VelocityProfileConfig{std::nullopt, 800.0},
+                                                 loadVelocityTargets(file.path));
+    REQUIRE(!samples.empty());
+    CHECK(samples.back().velocity == 0.0);
+}
+
+TEST_CASE("loadVelocityTargets reports malformed files with their line number") {
+    checkVelocityLoadError("#TARGET-START idle\n#HOLD 1\n", ":1: target 'idle' has no #VELOCITY");
+    checkVelocityLoadError("#TARGET-START\n#VELOCITY 1\n#HOLD 1\n#HOLD 2\n",
+                           ":4: #HOLD is given twice in this target");
+    checkVelocityLoadError("#TARGET-START\n#VELOCITY fast\n",
+                           ":2: #VELOCITY expects a number, got 'fast'");
+    checkVelocityLoadError("#TARGET-START\n#TO 0.8\n", ":2: unknown marker #TO");
+    checkVelocityLoadError("#VELOCITY 1\n", ":1: #VELOCITY must come after a #TARGET-START");
+    checkVelocityLoadError("#TARGET-START\n#VELOCITY 1\n400\n",
+                           ":3: expected a #MARKER line, got '400'");
+    checkVelocityLoadError("// empty\n", ": no targets; each target begins with #TARGET-START");
 }

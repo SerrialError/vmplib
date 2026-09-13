@@ -146,6 +146,49 @@ const std::vector<ScalarSample> samples =
                         file.startPosition, file.moves);
 ```
 
+### `velocity`: a flywheel, roller or intake
+
+```bash
+./bin/main velocity --file examples/flywheel.txt --max-accel 800 --max-vel 450
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--file <path>` | *required* | Velocity file to profile |
+| `--max-accel <units/s²>` | *required* | Acceleration limit |
+| `--max-vel <units/s>` | unset | If set, a target faster than this is an error |
+| `--dt <s>` | `0.01` | Timestep |
+| `--out <path>` | `output.txt` | Where to write the result |
+| `--format desmos\|code` | `desmos` | Output style |
+
+The mechanism starts at rest. It ramps to each target in turn at the
+acceleration limit, landing exactly on it, then holds it for `#HOLD` seconds,
+rounded up to a whole timestep. Velocities are signed, so a roller can run
+backwards.
+
+`--format desmos` emits `V` and `A`, each as `(t, value)`. `--format code` emits
+`S`, a C++ initialiser list with one `{velocity, accel}` per timestep.
+
+#### Velocity file format
+
+```
+#TARGET-START spin-up  <- begins a target; the name is optional
+#VELOCITY 400          <- required: the velocity to ramp to
+#HOLD 1.5              <- optional seconds to hold it once reached, default 0
+#TARGET-START spin-down
+#VELOCITY 0
+```
+
+From C++:
+
+```cpp
+#include "mechanism-file.hpp"
+
+const std::vector<VelocitySample> samples = generateVelocityProfile(
+    VelocityProfileConfig{/*maxVelocity=*/450.0, /*maxAccel=*/800.0},
+    loadVelocityTargets("examples/flywheel.txt"));
+```
+
 ---
 
 ### Tuning
