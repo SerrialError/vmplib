@@ -17,6 +17,15 @@ struct ScalarSample {
     double time;
 };
 
+// The velocity cap a list of keyframes imposes at distance s. Speeds are
+// interpolated in v^2 between the pair bracketing s, which makes each interval a
+// constant-acceleration segment, and held at the first or last keyframe's speed
+// outside them. Fewer than two keyframes impose no cap (infinity). keyframes must
+// be sorted by distance; idx is carried across calls so a monotonic sweep does
+// not rescan the list.
+double keyframeVelocityCeiling(double s, const std::vector<ScalarKeyframe>& keyframes,
+                               size_t& idx);
+
 // Forward/backward velocity profiling over a scalar arc length.
 //
 // This is the 1D core the Bezier profiler is built on. It knows nothing about
@@ -84,11 +93,6 @@ private:
     // Speed reachable in one timestep from the current speed under the
     // acceleration limit.
     double accelerationLimit() const;
-
-    // Velocity cap imposed by the keyframes bracketing s. idx is carried across
-    // calls so a monotonic sweep does not rescan the list.
-    double keyframeCeiling(double s, const std::vector<ScalarKeyframe>& keyframes,
-                           size_t& idx) const;
 
     // The braking ramp expressed as a potential that is linear in arc length.
     // v^2 alone is the continuous ramp, which a fixed timestep cannot follow;
