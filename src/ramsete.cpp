@@ -105,11 +105,18 @@ VelocityLayout RamseteFollower::step() {
     executed_poses_.push_back(current_pose_);
     executed_vels_.push_back(sample);
 
-    // Advance time & pose for the next step.
+    // Advance time & pose for the next step. Holding v and omega for a step
+    // drives an arc, whose chord points along the heading halfway through the
+    // turn and is sinc(turn / 2) as long as the distance driven. Stepping along
+    // the starting heading instead drifts outward by about v * dt * turn / 2 per
+    // step.
     time_accum_ += dt_;
-    current_pose_.x += v_real * std::cos(current_pose_.theta) * dt_;
-    current_pose_.y += v_real * std::sin(current_pose_.theta) * dt_;
-    current_pose_.theta = wrapAngle(current_pose_.theta + w_real * dt_);
+    const double turn = w_real * dt_;
+    const double chord = v_real * dt_ * sinc(turn / 2.0);
+    const double heading = current_pose_.theta + turn / 2.0;
+    current_pose_.x += chord * std::cos(heading);
+    current_pose_.y += chord * std::sin(heading);
+    current_pose_.theta = wrapAngle(current_pose_.theta + turn);
 
     ++index_;
     return sample;

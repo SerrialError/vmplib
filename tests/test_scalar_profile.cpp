@@ -1,7 +1,9 @@
 #include "doctest.h"
 #include "scalar-profile.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <vector>
 
 namespace {
@@ -170,4 +172,96 @@ TEST_CASE("a carry-over longer than the path passes straight through it") {
     CHECK(profile.samples().empty());
     // The unspent remainder has to keep going, not vanish at the join.
     CHECK(profile.overshootDistance() == doctest::Approx(0.05).epsilon(1e-3));
+}
+
+// --- Turn coupling ---------------------------------------------------------
+
+namespace {
+
+constexpr double kHalfTrack = 0.15;
+
+ScalarProfile makeTurningProfile(double distance, std::function<double(double)> curvatureAt,
+                                 double startVel = 0.0, double endVel = 0.0) {
+    constexpr int kNodes = 256;
+    return ScalarProfile(distance, evenGrid(distance, kNodes), flatCeiling(kNodes, kMaxVel),
+                         kMaxAccel, startVel, endVel, kDt, {}, 0.0, 0.0,
+                         TurnCoupling{ std::move(curvatureAt), kHalfTrack });
+}
+
+// Each side moves at v -+ kHalfTrack * v * curvature. Neither may change speed
+// by more than kMaxAccel * dt between samples, beyond rounding.
+void checkSides(const ScalarProfile& profile, const std::function<double(double)>& curvatureAt) {
+    const auto& samples = profile.samples();
+    REQUIRE(samples.size() > 1);
+    const double limit = kMaxAccel * kDt * (1.0 + 1e-9);
+    for (size_t i = 1; i < samples.size(); ++i) {
+        CAPTURE(i);
+        const double dv = samples[i].velocity - samples[i - 1].velocity;
+        const double dw = samples[i].velocity * curvatureAt(samples[i].position) -
+                          samples[i - 1].velocity * curvatureAt(samples[i - 1].position);
+        CHECK(std::fabs(dv - kHalfTrack * dw) <= limit);
+        CHECK(std::fabs(dv + kHalfTrack * dw) <= limit);
+    }
+}
+
+} // namespace
+
+TEST_CASE("a steady turn leaves the centre the share of the limit its outer side allows") {
+    const auto curvature = [](double) { return 2.0; };
+    ScalarProfile profile = makeTurningProfile(2.0, curvature);
+    REQUIRE(runToCompletion(profile));
+    checkSides(profile, curvature);
+
+    // The outer side moves at v * (1 + kHalfTrack * 2), so it reaches the limit
+    // while the centre accelerates at kMaxAccel / 1.3.
+    CHECK(profile.samples()[1].velocity == doctest::Approx(kMaxAccel * kDt / 1.3));
+    CHECK(profile.samples().back().velocity == doctest::Approx(0.0));
+}
+
+TEST_CASE("neither side exceeds the limit where the curvature keeps changing") {
+    // Swings from a hard left to a hard right and back, faster than the
+    // centre-only braking ramp can see coming.
+    const auto curvature = [](double s) { return 4.0 * std::sin(3.0 * s); };
+    struct Case { const char* name; double startVel; double exitVel; };
+    const Case cases[] = {
+        {"rest to rest", 0.0, 0.0},
+        {"rest to 0.5", 0.0, 0.5},
+        {"cruising to rest", kMaxVel, 0.0},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        ScalarProfile profile = makeTurningProfile(2.0, curvature, c.startVel, c.exitVel);
+        REQUIRE(runToCompletion(profile));
+        checkSides(profile, curvature);
+        CHECK(profile.samples().back().position == doctest::Approx(2.0));
+    }
+}
+
+TEST_CASE("a turning profile brakes in time for a sudden change in curvature") {
+    // Straight, then a 0.2 m radius from 1 m on. Crossing that step at speed v
+    // turns the sides apart by kHalfTrack * 5 * v in one sample, so the centre
+    // has to be nearly stopped there, and the braking ramp alone never slows it.
+    const auto curvature = [](double s) { return s < 1.0 ? 0.0 : 5.0; };
+    ScalarProfile profile = makeTurningProfile(2.0, curvature);
+    REQUIRE(runToCompletion(profile));
+    checkSides(profile, curvature);
+    CHECK(profile.samples().back().position == doctest::Approx(2.0));
+}
+
+TEST_CASE("a turning profile moves each sample on by the speed the one before holds") {
+    // Poses have to follow from the velocities, or a controller replaying the
+    // velocities ends up somewhere the path does not say. Braking early for a
+    // sudden change in curvature holds the profile well below its limit curve,
+    // which is where the two could part.
+    const auto curvature = [](double s) { return s < 1.0 ? 0.0 : 5.0; };
+    ScalarProfile profile = makeTurningProfile(2.0, curvature);
+    REQUIRE(runToCompletion(profile));
+
+    const auto& samples = profile.samples();
+    for (size_t i = 1; i < samples.size(); ++i) {
+        CAPTURE(i);
+        const double moved = samples[i - 1].position + samples[i - 1].velocity * kDt;
+        // The last step stops at the end of the axis.
+        CHECK(samples[i].position == doctest::Approx(std::min(moved, 2.0)).epsilon(1e-12));
+    }
 }

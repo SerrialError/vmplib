@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <vector>
 #include "types.hpp"
 #include "scalar-profile.hpp"
@@ -8,8 +9,9 @@
 //
 // It is a thin adapter over ScalarProfile: the shared 1D core does the
 // backward/forward velocity passes on arc length, and this class supplies the
-// two things that are specific to a 2D path -- the curvature velocity ceiling,
-// and the map from arc length back to a pose (x, y, theta) and angular velocity.
+// things that are specific to a 2D path -- the curvature velocity ceiling, the
+// curvature that limits each side's acceleration, and the map from arc length
+// back to a pose (x, y, theta) and angular velocity.
 class BezierPathProfile {
 public:
     BezierPathProfile(
@@ -27,7 +29,10 @@ public:
         // never lands exactly on a segment boundary, so the previous segment
         // hands over its overshoot here and the timestep grid stays uniform
         // across the join.
-        double startArcLength = 0.0
+        double startArcLength = 0.0,
+        // The previous segment's endCurvature(), which this segment's first step
+        // turns from. Unset on the first segment, whose start sample is its own.
+        std::optional<double> previousCurvature = std::nullopt
     );
 
     // Emit the sample at the start pose. Optional: on a multi-segment path only
@@ -44,6 +49,10 @@ public:
     // Distance the final step ran past the end of the segment. Feed this to the
     // next segment's startArcLength.
     double overshootArcLength() const;
+
+    // Curvature at the last sample. Feed this to the next segment's
+    // previousCurvature.
+    double endCurvature() const;
 
     // Access generated path poses & velocities
     const std::vector<Pose>& getPoses() const;

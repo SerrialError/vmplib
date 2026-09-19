@@ -445,3 +445,56 @@ TEST_CASE("ramsete converges from an initial pose offset") {
     const float peak = *std::max_element(errors.begin(), errors.end());
     CHECK(peak <= initialError * 1.5f);
 }
+
+// --- Each side of the drivetrain -------------------------------------------
+
+TEST_CASE("neither side of the drivetrain changes speed faster than the acceleration limit") {
+    // The centre can hold its limit while the outer side of a turn runs well
+    // past it, so check the sides themselves on every kind of profile.
+    const double halfTrack = static_cast<double>(kTrackWidth) / 2.0;
+    const double limit = static_cast<double>(kMaxAccel) * static_cast<double>(kDt) * (1.0 + 1e-9);
+
+    struct Case {
+        const char* name;
+        const std::vector<Point>* path;
+        float startVel;
+        float exitVel;
+    };
+    const Case cases[] = {
+        {"long, rest to rest", &kLongPath, 0.f, 0.f},
+        {"long, rest to 0.5", &kLongPath, 0.f, 0.5f},
+        {"long, cruising to rest", &kLongPath, kMaxVel, 0.f},
+        {"shorter than the braking distance", &kShortPath, 0.f, 0.f},
+        {"hairpin", &kHairpin, 0.f, 0.f},
+    };
+
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        BezierPathProfile profile = makeProfile(*c.path, c.startVel, c.exitVel);
+        REQUIRE(runToCompletion(profile));
+
+        const auto& vels = profile.getVelocities();
+        for (size_t i = 1; i < vels.size(); ++i) {
+            CAPTURE(i);
+            const double dv = vels[i].linear - vels[i - 1].linear;
+            const double dw = vels[i].angular - vels[i - 1].angular;
+            CHECK(std::fabs(dv - halfTrack * dw) <= limit);
+            CHECK(std::fabs(dv + halfTrack * dw) <= limit);
+        }
+    }
+}
+
+TEST_CASE("a turn from rest is held back by its outer side, not its centre") {
+    // kLongPath sets off already curving, so its outer side takes the whole
+    // limit on the first step and the centre only part of it.
+    BezierPathProfile profile = makeProfile(kLongPath, 0.f, 0.f);
+    REQUIRE(runToCompletion(profile));
+
+    const auto& vels = profile.getVelocities();
+    REQUIRE(vels.size() > 1);
+    const double halfTrack = static_cast<double>(kTrackWidth) / 2.0;
+    const double step = static_cast<double>(kMaxAccel) * static_cast<double>(kDt);
+    const double outer = std::fabs(vels[1].linear) + halfTrack * std::fabs(vels[1].angular);
+    CHECK(outer == doctest::Approx(step));
+    CHECK(vels[1].linear < 0.9 * step);
+}

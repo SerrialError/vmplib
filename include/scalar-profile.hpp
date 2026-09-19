@@ -1,6 +1,22 @@
 #pragma once
 
+#include <functional>
+#include <optional>
 #include <vector>
+
+// Couples a profile to a differential drive turning along its distance axis.
+// The two sides move at v -+ halfTrack * omega, where omega = v * curvature, and
+// a coupled profile holds each side's change in speed within the acceleration
+// limit rather than only v's.
+struct TurnCoupling {
+    // Signed curvature at a distance along the axis.
+    std::function<double(double)> curvatureAt;
+    // Distance from the centre to either side: half the track width.
+    double halfTrack;
+    // Curvature at the sample before the first step, when that sample belongs to
+    // a previous profile. Unset means the curvature where this profile starts.
+    std::optional<double> previousCurvature = std::nullopt;
+};
 
 // A target velocity pinned to a distance along the profile.
 struct ScalarKeyframe {
@@ -41,6 +57,14 @@ double keyframeVelocityCeiling(double s, const std::vector<ScalarKeyframe>& keyf
 // its top speed at every node; the Bezier profiler passes the lower of the top
 // speed and the curvature limit. Distance-indexed keyframes are folded in on
 // top of that ceiling here, since keyframes are a scalar constraint.
+//
+// A TurnCoupling replaces the per-step acceleration cap with one on each side of
+// a differential drive. How hard a turning robot may brake then depends on how
+// the curvature changes between the samples it lands on, which no curve over
+// distance can capture exactly, so the backward pass alone no longer guarantees
+// a step can brake in time. Each step instead checks the speed it picks by
+// braking from it as hard as both sides allow, sample by sample, and takes the
+// fastest speed from which that still honours the limit curve.
 class ScalarProfile {
 public:
     ScalarProfile(
@@ -66,7 +90,10 @@ public:
         double startDistance = 0.0,
         // Wall-clock time the first sample is stamped with; subsequent samples
         // advance by dt.
-        double timeAccum = 0.0
+        double timeAccum = 0.0,
+        // Limits each side of a turning differential drive to maxAccel instead
+        // of the distance axis alone. Unset for a 1D mechanism.
+        std::optional<TurnCoupling> turn = std::nullopt
     );
 
     // Emit the sample at the starting position. Optional: a caller stitching
@@ -83,6 +110,11 @@ public:
     // Distance the final step ran past the end of the path. Hand this to the
     // next profile's startDistance to keep the timestep grid continuous.
     double overshootDistance() const;
+
+    // Curvature at the last sample, or the previousCurvature this profile was
+    // handed if it has none. Hand this to the next profile's previousCurvature.
+    // 0 without a TurnCoupling.
+    double currentCurvature() const;
 
     const std::vector<ScalarSample>& samples() const;
 
@@ -105,11 +137,34 @@ private:
     // braking potential the backward pass is linear in.
     double velocityAt(double s) const;
 
+    // The speed a step from speed v at s crosses at. A 1D profile takes the
+    // fastest the limit curve and the acceleration limit allow, since it is only
+    // ever below the curve while accelerating. A coupled profile brakes below the
+    // curve for turns the curve cannot see, where that speed would move each pose
+    // ahead of where the velocities take the robot, so it crosses at v, the
+    // speed held where the step begins.
+    double travelSpeed(double s, double v) const;
+
+    // The next speeds, [lo, hi], that change both sides' speed by at most
+    // maxAccel * dt on a step from speed v at curvature kappa to curvature
+    // nextKappa. False if there are none. Coupled profiles only.
+    bool stepRange(double v, double kappa, double nextKappa, double& lo, double& hi) const;
+
+    // True if braking as hard as both sides allow, from speed v at s on
+    // curvature kappa, keeps every later sample under the limit curve until the
+    // robot stops or the profile ends. Coupled profiles only.
+    bool brakesInTime(double s, double v, double kappa) const;
+
+    // The fastest speed in [floor, cap] at s that brakesInTime accepts, where
+    // floor is known to be accepted. Coupled profiles only.
+    double fastestSafeSpeed(double s, double kappa, double floor, double cap) const;
+
     // Parameters
     double distance_;
     double max_accel_;
     double exit_velocity_;
     double dt_;
+    std::optional<TurnCoupling> turn_;
 
     // The velocity limit curve: limit_v_[i] is the fastest the robot may travel
     // at limit_s_[i] and still honour every ceiling ahead of it without ever
@@ -121,6 +176,7 @@ private:
     // Internal state
     double s_current_;
     double cur_speed_;
+    double cur_curvature_;   // at the last sample; 0 without turn_
     double time_accum_;
     double overshoot_;
     size_t step_count_;

@@ -44,6 +44,26 @@ void buildArcLengthTable(const std::vector<Point>& control, double maxLinVel,
                                  curvatureVelocityLimit(control, t, maxLinVel, trackWidth));
     }
 }
+
+// The Bezier parameter at arc length s, read off a table built by
+// buildArcLengthTable.
+double parameterAtArcLength(const std::vector<double>& ts, const std::vector<double>& ss,
+                            double s) {
+    if (s <= 0.0) {
+        return 0.0;
+    }
+    if (s >= ss.back()) {
+        return 1.0;
+    }
+    const auto it = std::upper_bound(ss.begin(), ss.end(), s);
+    const size_t hi = static_cast<size_t>(it - ss.begin());
+    const size_t lo = hi - 1;
+    const double span = ss[hi] - ss[lo];
+    if (span <= 0.0) {
+        return ts[hi];
+    }
+    return ts[lo] + (ts[hi] - ts[lo]) * (s - ss[lo]) / span;
+}
 } // namespace
 
 BezierPathProfile::BezierPathProfile(
@@ -57,7 +77,8 @@ BezierPathProfile::BezierPathProfile(
     const std::vector<KeyframeVelocities>& keyframes,
     bool useKeyframes,
     double dt,
-    double startArcLength
+    double startArcLength,
+    std::optional<double> previousCurvature
 )
     : control_(controlPts),
       max_lin_vel_(maxLinVel),
@@ -90,9 +111,19 @@ BezierPathProfile::BezierPathProfile(
         }
     }
 
+    // The core reads curvature where each sample lands exactly as emitSamples
+    // does, so the side limit it holds is the one the angular velocity output
+    // carries. The callback keeps its own copy of the table, since this object
+    // may be moved out from under a pointer to it.
+    TurnCoupling turn{
+        [control = control_, ts = limit_t_, ss = limit_s_](double s) {
+            return signedCurvature(control, parameterAtArcLength(ts, ss, s));
+        },
+        track_width_ / 2.0, previousCurvature};
+
     scalar_ = ScalarProfile(total_length_, limit_s_, std::move(ceiling), maxLinAccel,
                             startVel, endVel, dt, std::move(scalarKeyframes), startArcLength,
-                            timeAccum);
+                            timeAccum, std::move(turn));
 
     poses_.reserve(kExpectedSamples);
     velocities_.reserve(kExpectedSamples);
@@ -100,6 +131,10 @@ BezierPathProfile::BezierPathProfile(
 
 double BezierPathProfile::overshootArcLength() const {
     return scalar_.overshootDistance();
+}
+
+double BezierPathProfile::endCurvature() const {
+    return scalar_.currentCurvature();
 }
 
 bool BezierPathProfile::isFinished() const {
@@ -129,20 +164,7 @@ double BezierPathProfile::arcLengthAt(double t) const {
 }
 
 double BezierPathProfile::parameterAt(double s) const {
-    if (s <= 0.0) {
-        return 0.0;
-    }
-    if (s >= total_length_) {
-        return 1.0;
-    }
-    const auto it = std::upper_bound(limit_s_.begin(), limit_s_.end(), s);
-    const size_t hi = static_cast<size_t>(it - limit_s_.begin());
-    const size_t lo = hi - 1;
-    const double span = limit_s_[hi] - limit_s_[lo];
-    if (span <= 0.0) {
-        return limit_t_[hi];
-    }
-    return limit_t_[lo] + (limit_t_[hi] - limit_t_[lo]) * (s - limit_s_[lo]) / span;
+    return parameterAtArcLength(limit_t_, limit_s_, s);
 }
 
 void BezierPathProfile::emitSamples() {
