@@ -1,4 +1,5 @@
 #include "cli-args.hpp"
+#include "drive-samples.hpp"
 #include "motion-profiler.hpp"
 #include "file-parser.hpp"
 #include "mechanism-file.hpp"
@@ -17,19 +18,19 @@ namespace {
 constexpr const char* kUsage =
     "Usage:\n"
     "  ./main path --file <path> --max-vel <m/s> --max-accel <m/s^2> --track-width <m>\n"
-    "              [--dt <s>] [--out <path>] [--format desmos|code]\n"
+    "              [--dt <s>] [--out <path>] [--format desmos|cpp|rust]\n"
     "  ./main --file <path> ...   same as `path`\n"
     "  ./main linear --file <moves> --max-vel <units/s> --max-accel <units/s^2>\n"
-    "              [--dt <s>] [--out <path>] [--format desmos|code]\n"
+    "              [--dt <s>] [--out <path>] [--format desmos|cpp|rust]\n"
     "  ./main velocity --file <targets> --max-accel <units/s^2> [--max-vel <units/s>]\n"
-    "              [--dt <s>] [--out <path>] [--format desmos|code]\n"
+    "              [--dt <s>] [--out <path>] [--format desmos|cpp|rust]\n"
     "  ./main --help\n";
 
 // --format, checked against the styles every mode can print.
 std::string outputFormat(const FlagMap& flags) {
     const std::string format = stringFlag(flags, "--format", "desmos");
-    if (format != "desmos" && format != "code") {
-        throw CliError("--format must be 'desmos' or 'code'");
+    if (format != "desmos" && format != "cpp" && format != "rust") {
+        throw CliError("--format must be 'desmos', 'cpp' or 'rust'");
     }
     return format;
 }
@@ -43,7 +44,8 @@ std::ofstream openOutput(const FlagMap& flags) {
     return out;
 }
 
-void writeTrajectory(std::ostream& out, const Trajectory& traj, const std::string& format) {
+void writeTrajectory(std::ostream& out, const Trajectory& traj, const ProfileConfig& config,
+                     const std::string& format) {
     if (format == "desmos") {
         Printer::printPoseVectorDesmos(out, "X = ", traj.poses);
         Printer::printVelocityVectorDesmos(out, "L = ", traj.velocities, "linear");
@@ -51,9 +53,11 @@ void writeTrajectory(std::ostream& out, const Trajectory& traj, const std::strin
         Printer::printPoseVectorDesmos(out, "X_r = ", traj.followedPoses);
         Printer::printVelocityVectorDesmos(out, "L_r = ", traj.followedVelocities, "linear");
         Printer::printVelocityVectorDesmos(out, "A_r = ", traj.followedVelocities, "angular");
+    } else if (format == "cpp") {
+        Printer::printPoseVectorCpp(out, "P =", traj.poses);
+        Printer::printVelocityVectorCpp(out, "V =", traj.velocities);
     } else {
-        Printer::printPoseVectorCode(out, "P =", traj.poses);
-        Printer::printVelocityVectorCode(out, "V =", traj.velocities);
+        Printer::printDriveSamplesRust(out, driveSamples(traj, config));
     }
 }
 
@@ -79,7 +83,7 @@ void runPath(const std::vector<std::string>& args) {
     const Trajectory traj = generateTrajectory(controlPoints, keyframeList, true, config);
 
     std::ofstream out = openOutput(flags);
-    writeTrajectory(out, traj, format);
+    writeTrajectory(out, traj, config, format);
 }
 
 // A single axis -- lift, arm, turret, straight drive -- through the moves in
@@ -104,8 +108,10 @@ void runLinear(const std::vector<std::string>& args) {
     std::ofstream out = openOutput(flags);
     if (format == "desmos") {
         Printer::printScalarSamplesDesmos(out, samples);
+    } else if (format == "cpp") {
+        Printer::printScalarSamplesCpp(out, samples);
     } else {
-        Printer::printScalarSamplesCode(out, samples);
+        Printer::printScalarSamplesRust(out, samples);
     }
 }
 
@@ -130,8 +136,10 @@ void runVelocity(const std::vector<std::string>& args) {
     std::ofstream out = openOutput(flags);
     if (format == "desmos") {
         Printer::printVelocitySamplesDesmos(out, samples);
+    } else if (format == "cpp") {
+        Printer::printVelocitySamplesCpp(out, samples);
     } else {
-        Printer::printVelocitySamplesCode(out, samples);
+        Printer::printVelocitySamplesRust(out, samples);
     }
 }
 
