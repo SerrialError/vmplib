@@ -125,7 +125,7 @@ void printVelocityVectorDesmos(
 }
 
 // prints P = {(x, y),(x, y),...}
-void printPoseVectorCode(
+void printPoseVectorCpp(
 	std::ostream& out,
 	const std::string& label,
 	const std::vector<std::vector<Pose>>& poses
@@ -149,7 +149,7 @@ void printPoseVectorCode(
 }
 
 // prints V = {(linear, angular),(linear, angular),...}
-void printVelocityVectorCode(
+void printVelocityVectorCpp(
 	std::ostream& out,
 	const std::string& label,
 	const std::vector<std::vector<VelocityLayout>>& vels
@@ -181,7 +181,7 @@ void printScalarSamplesDesmos(
 }
 
 // prints S = {{position, velocity, accel},{position, velocity, accel},...};
-void printScalarSamplesCode(
+void printScalarSamplesCpp(
 	std::ostream& out,
 	const std::vector<ScalarSample>& samples
 ) {
@@ -207,7 +207,7 @@ void printVelocitySamplesDesmos(
 }
 
 // prints S = {{velocity, accel},{velocity, accel},...};
-void printVelocitySamplesCode(
+void printVelocitySamplesCpp(
 	std::ostream& out,
 	const std::vector<VelocitySample>& samples
 ) {

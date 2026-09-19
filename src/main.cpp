@@ -18,19 +18,19 @@ namespace {
 constexpr const char* kUsage =
     "Usage:\n"
     "  ./main path --file <path> --max-vel <m/s> --max-accel <m/s^2> --track-width <m>\n"
-    "              [--dt <s>] [--out <path>] [--format desmos|code|rust]\n"
+    "              [--dt <s>] [--out <path>] [--format desmos|cpp|rust]\n"
     "  ./main --file <path> ...   same as `path`\n"
     "  ./main linear --file <moves> --max-vel <units/s> --max-accel <units/s^2>\n"
-    "              [--dt <s>] [--out <path>] [--format desmos|code|rust]\n"
+    "              [--dt <s>] [--out <path>] [--format desmos|cpp|rust]\n"
     "  ./main velocity --file <targets> --max-accel <units/s^2> [--max-vel <units/s>]\n"
-    "              [--dt <s>] [--out <path>] [--format desmos|code|rust]\n"
+    "              [--dt <s>] [--out <path>] [--format desmos|cpp|rust]\n"
     "  ./main --help\n";
 
 // --format, checked against the styles every mode can print.
 std::string outputFormat(const FlagMap& flags) {
     const std::string format = stringFlag(flags, "--format", "desmos");
-    if (format != "desmos" && format != "code" && format != "rust") {
-        throw CliError("--format must be 'desmos', 'code' or 'rust'");
+    if (format != "desmos" && format != "cpp" && format != "rust") {
+        throw CliError("--format must be 'desmos', 'cpp' or 'rust'");
     }
     return format;
 }
@@ -53,9 +53,9 @@ void writeTrajectory(std::ostream& out, const Trajectory& traj, const ProfileCon
         Printer::printPoseVectorDesmos(out, "X_r = ", traj.followedPoses);
         Printer::printVelocityVectorDesmos(out, "L_r = ", traj.followedVelocities, "linear");
         Printer::printVelocityVectorDesmos(out, "A_r = ", traj.followedVelocities, "angular");
-    } else if (format == "code") {
-        Printer::printPoseVectorCode(out, "P =", traj.poses);
-        Printer::printVelocityVectorCode(out, "V =", traj.velocities);
+    } else if (format == "cpp") {
+        Printer::printPoseVectorCpp(out, "P =", traj.poses);
+        Printer::printVelocityVectorCpp(out, "V =", traj.velocities);
     } else {
         Printer::printDriveSamplesRust(out, driveSamples(traj, config));
     }
@@ -108,8 +108,8 @@ void runLinear(const std::vector<std::string>& args) {
     std::ofstream out = openOutput(flags);
     if (format == "desmos") {
         Printer::printScalarSamplesDesmos(out, samples);
-    } else if (format == "code") {
-        Printer::printScalarSamplesCode(out, samples);
+    } else if (format == "cpp") {
+        Printer::printScalarSamplesCpp(out, samples);
     } else {
         Printer::printScalarSamplesRust(out, samples);
     }
@@ -136,8 +136,8 @@ void runVelocity(const std::vector<std::string>& args) {
     std::ofstream out = openOutput(flags);
     if (format == "desmos") {
         Printer::printVelocitySamplesDesmos(out, samples);
-    } else if (format == "code") {
-        Printer::printVelocitySamplesCode(out, samples);
+    } else if (format == "cpp") {
+        Printer::printVelocitySamplesCpp(out, samples);
     } else {
         Printer::printVelocitySamplesRust(out, samples);
     }

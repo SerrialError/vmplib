@@ -52,7 +52,7 @@ Leaving the mode off (`./bin/main --file ...`) also runs `path`.
 | `--track-width <m>` | *required* | Distance between the left and right wheels |
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
-| `--format desmos\|code\|rust` | `desmos` | Output style |
+| `--format desmos\|cpp\|rust` | `desmos` | Output style |
 
 `--format desmos` emits six lists you can paste straight into Desmos:
 
@@ -63,7 +63,7 @@ Leaving the mode off (`./bin/main --file ...`) also runs `path`.
 | `A` | planned angular velocity, as `(t, ω)` |
 | `X_r`, `L_r`, `A_r` | the same three for the RAMSETE-followed trajectory |
 
-`--format code` emits `P` and `V` as C++ initialiser lists, for pasting into
+`--format cpp` emits `P` and `V` as C++ initialiser lists, for pasting into
 robot code that replays a fixed trajectory.
 
 `--format rust` emits a Rust module, for dropping into a robot crate with `mod`.
@@ -120,14 +120,14 @@ Units are default SI units throughout.
 | `--max-accel <units/s²>` | *required* | Acceleration limit |
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
-| `--format desmos\|code\|rust` | `desmos` | Output style |
+| `--format desmos\|cpp\|rust` | `desmos` | Output style |
 
 Units are whatever the move file uses, as long as the limits match: metres for
 a lift, radians for an arm or turret. Gearing and motor conversions stay in your
 robot code.
 
 `--format desmos` emits `P`, `V` and `A` (position, velocity and acceleration),
-each as `(t, value)`. `--format code` emits `S`, a C++ initialiser list with one
+each as `(t, value)`. `--format cpp` emits `S`, a C++ initialiser list with one
 `{position, velocity, accel}` per timestep.
 
 `--format rust` emits a Rust module with a `MotionSample { time, velocity, accel }`
@@ -180,14 +180,14 @@ const std::vector<ScalarSample> samples =
 | `--max-vel <units/s>` | unset | If set, a target faster than this is an error |
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
-| `--format desmos\|code\|rust` | `desmos` | Output style |
+| `--format desmos\|cpp\|rust` | `desmos` | Output style |
 
 The mechanism starts at rest. It ramps to each target in turn at the
 acceleration limit, landing exactly on it, then holds it for `#HOLD` seconds,
 rounded up to a whole timestep. Velocities are signed, so a roller can run
 backwards.
 
-`--format desmos` emits `V` and `A`, each as `(t, value)`. `--format code` emits
+`--format desmos` emits `V` and `A`, each as `(t, value)`. `--format cpp` emits
 `S`, a C++ initialiser list with one `{velocity, accel}` per timestep.
 `--format rust` emits the same `MotionSample` module as `linear`.
 
