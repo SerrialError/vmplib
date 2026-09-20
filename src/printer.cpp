@@ -26,26 +26,52 @@ std::string rustFloat(double value) {
 	return text;
 }
 
+// The name to write each sample as: the last segment of typePath, or the
+// declared name when the file declares its own type.
+std::string rustTypeName(const std::string& typePath, const char* declaredName) {
+	if (typePath.empty()) {
+		return declaredName;
+	}
+	const size_t lastSegment = typePath.rfind("::");
+	return lastSegment == std::string::npos ? typePath : typePath.substr(lastSegment + 2);
+}
+
+// Everything above the samples: the type they are written as, either declared
+// here or brought in from the crate the file is dropped into. A path with no
+// "::" names a type already in scope, which needs no use.
+void printRustHeader(std::ostream& out, const std::string& typePath, const char* declaration) {
+	out << kRustHeader;
+	if (typePath.empty()) {
+		out << declaration << "\n";
+	} else if (typePath.find("::") != std::string::npos) {
+		out << "use " << typePath << ";\n\n";
+	}
+	// One sample per line is the point of this format; rustfmt would otherwise
+	// break each one across nine lines.
+	out << "#[rustfmt::skip]\n";
+}
+
 // The Rust MotionSample module shared by both 1D sample types. Each sample
 // carries the accel stored on the next one, which is (next velocity - this
 // velocity) / dt.
 template <typename Sample>
-void printMotionSamplesRust(std::ostream& out, const std::vector<Sample>& samples) {
-	out << kRustHeader
-	    << "#[derive(Clone, Copy, Debug, PartialEq)]\n"
-	       "pub struct MotionSample {\n"
-	       "    /// s\n"
-	       "    pub time: f64,\n"
-	       "    /// units/s\n"
-	       "    pub velocity: f64,\n"
-	       "    /// units/s^2 that carry this sample to the next; 0 at the last\n"
-	       "    pub accel: f64,\n"
-	       "}\n"
-	       "\n"
-	       "pub static SAMPLES: &[MotionSample] = &[\n";
+void printMotionSamplesRust(std::ostream& out, const std::vector<Sample>& samples,
+                            const std::string& typePath) {
+	const std::string name = rustTypeName(typePath, "MotionSample");
+	printRustHeader(out, typePath,
+	                "#[derive(Clone, Copy, Debug, PartialEq)]\n"
+	                "pub struct MotionSample {\n"
+	                "    /// s\n"
+	                "    pub time: f64,\n"
+	                "    /// units/s\n"
+	                "    pub velocity: f64,\n"
+	                "    /// units/s^2 that carry this sample to the next; 0 at the last\n"
+	                "    pub accel: f64,\n"
+	                "}\n");
+	out << "pub static SAMPLES: &[" << name << "] = &[\n";
 	for (size_t i = 0; i < samples.size(); ++i) {
 		const double accel = i + 1 < samples.size() ? samples[i + 1].accel : 0.0;
-		out << "    MotionSample { time: " << rustFloat(samples[i].time)
+		out << "    " << name << " { time: " << rustFloat(samples[i].time)
 		    << ", velocity: " << rustFloat(samples[i].velocity)
 		    << ", accel: " << rustFloat(accel) << " },\n";
 	}
@@ -225,44 +251,47 @@ void printVelocitySamplesCpp(
 
 void printScalarSamplesRust(
 	std::ostream& out,
-	const std::vector<ScalarSample>& samples
+	const std::vector<ScalarSample>& samples,
+	const std::string& typePath
 ) {
-	printMotionSamplesRust(out, samples);
+	printMotionSamplesRust(out, samples, typePath);
 }
 
 void printVelocitySamplesRust(
 	std::ostream& out,
-	const std::vector<VelocitySample>& samples
+	const std::vector<VelocitySample>& samples,
+	const std::string& typePath
 ) {
-	printMotionSamplesRust(out, samples);
+	printMotionSamplesRust(out, samples, typePath);
 }
 
 void printDriveSamplesRust(
 	std::ostream& out,
-	const std::vector<DriveSample>& samples
+	const std::vector<DriveSample>& samples,
+	const std::string& typePath
 ) {
-	out << kRustHeader
-	    << "#[derive(Clone, Copy, Debug, PartialEq)]\n"
-	       "pub struct DriveSample {\n"
-	       "    /// s\n"
-	       "    pub time: f64,\n"
-	       "    /// m/s, at the centre of the robot\n"
-	       "    pub linear_velocity: f64,\n"
-	       "    /// rad/s, counterclockwise positive\n"
-	       "    pub angular_velocity: f64,\n"
-	       "    /// m/s\n"
-	       "    pub left_velocity: f64,\n"
-	       "    /// m/s\n"
-	       "    pub right_velocity: f64,\n"
-	       "    /// m/s^2 that carry the left side to the next sample; 0 at the last\n"
-	       "    pub left_accel: f64,\n"
-	       "    /// m/s^2 that carry the right side to the next sample; 0 at the last\n"
-	       "    pub right_accel: f64,\n"
-	       "}\n"
-	       "\n"
-	       "pub static SAMPLES: &[DriveSample] = &[\n";
+	const std::string name = rustTypeName(typePath, "DriveSample");
+	printRustHeader(out, typePath,
+	                "#[derive(Clone, Copy, Debug, PartialEq)]\n"
+	                "pub struct DriveSample {\n"
+	                "    /// s\n"
+	                "    pub time: f64,\n"
+	                "    /// m/s, at the centre of the robot\n"
+	                "    pub linear_velocity: f64,\n"
+	                "    /// rad/s, counterclockwise positive\n"
+	                "    pub angular_velocity: f64,\n"
+	                "    /// m/s\n"
+	                "    pub left_velocity: f64,\n"
+	                "    /// m/s\n"
+	                "    pub right_velocity: f64,\n"
+	                "    /// m/s^2 that carry the left side to the next sample; 0 at the last\n"
+	                "    pub left_accel: f64,\n"
+	                "    /// m/s^2 that carry the right side to the next sample; 0 at the last\n"
+	                "    pub right_accel: f64,\n"
+	                "}\n");
+	out << "pub static SAMPLES: &[" << name << "] = &[\n";
 	for (const DriveSample& s : samples) {
-		out << "    DriveSample { time: " << rustFloat(s.time)
+		out << "    " << name << " { time: " << rustFloat(s.time)
 		    << ", linear_velocity: " << rustFloat(s.linear)
 		    << ", angular_velocity: " << rustFloat(s.angular)
 		    << ", left_velocity: " << rustFloat(s.leftVelocity)

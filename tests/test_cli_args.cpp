@@ -56,3 +56,22 @@ TEST_CASE("numberFlag reads only a value that is entirely a number") {
                         CliError);
     }
 }
+
+TEST_CASE("rustPathFlag takes identifiers separated by ::") {
+    const std::vector<std::string> allowed = {"--rust-type"};
+    CHECK(rustPathFlag(parseFlags({}, allowed), "--rust-type").empty());
+
+    for (const char* good : {"DriveSample", "crate::motion_profile::DriveSample",
+                             "::my_crate::Sample", "super::_step9"}) {
+        CAPTURE(good);
+        CHECK(rustPathFlag(parseFlags({"--rust-type", good}, allowed), "--rust-type") == good);
+    }
+
+    // Anything else would land in the generated file as it stands.
+    for (const char* bad : {"crate::", "::", "9lives", "crate::9", "two words", "a:b",
+                            "drop; mod evil", "crate::Type "}) {
+        CAPTURE(bad);
+        CHECK_THROWS_AS(rustPathFlag(parseFlags({"--rust-type", bad}, allowed), "--rust-type"),
+                        CliError);
+    }
+}

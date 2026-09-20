@@ -30,3 +30,10 @@ std::string stringFlag(const FlagMap& flags, const std::string& flag, const std:
 // The value of flag read as a number, or nullopt if it was not given. Throws
 // CliError unless the whole value is a number, so "1.5m" is not read as 1.5.
 std::optional<double> numberFlag(const FlagMap& flags, const std::string& flag);
+
+// The value of flag read as a Rust path, such as
+// crate::motion_profile::DriveSample, or empty if it was not given. Throws
+// CliError unless it is identifiers separated by ::, optionally led by one, so
+// that a typo is caught here rather than by rustc and nothing else can reach the
+// generated file.
+std::string rustPathFlag(const FlagMap& flags, const std::string& flag);
