@@ -24,7 +24,12 @@ constexpr const char* kUsage =
     "              [--dt <s>] [--out <path>] [--format desmos|cpp|rust]\n"
     "  ./main velocity --file <targets> --max-accel <units/s^2> [--max-vel <units/s>]\n"
     "              [--dt <s>] [--out <path>] [--format desmos|cpp|rust]\n"
-    "  ./main --help\n";
+    "  ./main --help\n"
+    "\n"
+    "  --rust-type <path>   with --format rust, write the samples as a type the\n"
+    "                       crate already defines, such as\n"
+    "                       crate::motion_profile::DriveSample, and import it\n"
+    "                       rather than declaring a struct in the file\n";
 
 // --format, checked against the styles every mode can print.
 std::string outputFormat(const FlagMap& flags) {
@@ -33,6 +38,18 @@ std::string outputFormat(const FlagMap& flags) {
         throw CliError("--format must be 'desmos', 'cpp' or 'rust'");
     }
     return format;
+}
+
+// --rust-type: the sample type the Rust output writes its samples as, empty
+// unless given. One type shared across a crate's profiles is what lets a single
+// follower take all of them, since a struct declared per file is a type per
+// file.
+std::string rustSampleType(const FlagMap& flags, const std::string& format) {
+    const std::string path = rustPathFlag(flags, "--rust-type");
+    if (!path.empty() && format != "rust") {
+        throw CliError("--rust-type only applies to --format rust");
+    }
+    return path;
 }
 
 std::ofstream openOutput(const FlagMap& flags) {
@@ -45,7 +62,7 @@ std::ofstream openOutput(const FlagMap& flags) {
 }
 
 void writeTrajectory(std::ostream& out, const Trajectory& traj, const ProfileConfig& config,
-                     const std::string& format) {
+                     const std::string& format, const std::string& rustType) {
     if (format == "desmos") {
         Printer::printPoseVectorDesmos(out, "X = ", traj.poses);
         Printer::printVelocityVectorDesmos(out, "L = ", traj.velocities, "linear");
@@ -57,16 +74,18 @@ void writeTrajectory(std::ostream& out, const Trajectory& traj, const ProfileCon
         Printer::printPoseVectorCpp(out, "P =", traj.poses);
         Printer::printVelocityVectorCpp(out, "V =", traj.velocities);
     } else {
-        Printer::printDriveSamplesRust(out, driveSamples(traj, config));
+        Printer::printDriveSamplesRust(out, driveSamples(traj, config), rustType);
     }
 }
 
 // A differential drive along the Bezier path in --file.
 void runPath(const std::vector<std::string>& args) {
     const FlagMap flags = parseFlags(args, {"--file", "--max-vel", "--max-accel",
-                                            "--track-width", "--dt", "--out", "--format"});
+                                            "--track-width", "--dt", "--out", "--format",
+                                            "--rust-type"});
     requireFlags(flags, {"--file", "--max-vel", "--max-accel", "--track-width"});
     const std::string format = outputFormat(flags);
+    const std::string rustType = rustSampleType(flags, format);
 
     ProfileConfig config;
     config.maxVelocity = numberFlag(flags, "--max-vel");
@@ -83,16 +102,17 @@ void runPath(const std::vector<std::string>& args) {
     const Trajectory traj = generateTrajectory(controlPoints, keyframeList, true, config);
 
     std::ofstream out = openOutput(flags);
-    writeTrajectory(out, traj, config, format);
+    writeTrajectory(out, traj, config, format, rustType);
 }
 
 // A single axis -- lift, arm, turret, straight drive -- through the moves in
 // --file.
 void runLinear(const std::vector<std::string>& args) {
     const FlagMap flags = parseFlags(args, {"--file", "--max-vel", "--max-accel", "--dt",
-                                            "--out", "--format"});
+                                            "--out", "--format", "--rust-type"});
     requireFlags(flags, {"--file", "--max-vel", "--max-accel"});
     const std::string format = outputFormat(flags);
+    const std::string rustType = rustSampleType(flags, format);
 
     ScalarProfileConfig config;
     config.maxVelocity = numberFlag(flags, "--max-vel");
@@ -111,7 +131,7 @@ void runLinear(const std::vector<std::string>& args) {
     } else if (format == "cpp") {
         Printer::printScalarSamplesCpp(out, samples);
     } else {
-        Printer::printScalarSamplesRust(out, samples);
+        Printer::printScalarSamplesRust(out, samples, rustType);
     }
 }
 
@@ -119,9 +139,10 @@ void runLinear(const std::vector<std::string>& args) {
 // velocity targets in --file.
 void runVelocity(const std::vector<std::string>& args) {
     const FlagMap flags = parseFlags(args, {"--file", "--max-accel", "--max-vel", "--dt",
-                                            "--out", "--format"});
+                                            "--out", "--format", "--rust-type"});
     requireFlags(flags, {"--file", "--max-accel"});
     const std::string format = outputFormat(flags);
+    const std::string rustType = rustSampleType(flags, format);
 
     VelocityProfileConfig config;
     config.maxAccel = numberFlag(flags, "--max-accel");
@@ -139,7 +160,7 @@ void runVelocity(const std::vector<std::string>& args) {
     } else if (format == "cpp") {
         Printer::printVelocitySamplesCpp(out, samples);
     } else {
-        Printer::printVelocitySamplesRust(out, samples);
+        Printer::printVelocitySamplesRust(out, samples, rustType);
     }
 }
 
