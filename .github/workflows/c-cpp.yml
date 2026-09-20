@@ -35,3 +35,12 @@ jobs:
         for mode in path linear velocity; do
           rustc --edition 2021 --crate-type lib -D warnings --out-dir "$RUNNER_TEMP" "$mode.rs"
         done
+    - name: compile Rust output that shares a sample type
+      run: |
+        mkdir -p "$RUNNER_TEMP/crate"
+        limits="--max-vel 1.8885 --max-accel 4.1220 --track-width 0.2951"
+        ./bin/main path --file examples/path-points.txt $limits --format rust --out "$RUNNER_TEMP/crate/defs.rs"
+        ./bin/main path --file examples/path-points.txt $limits --format rust \
+          --rust-type crate::defs::DriveSample --out "$RUNNER_TEMP/crate/uses.rs"
+        printf 'pub mod defs;\npub mod uses;\n' > "$RUNNER_TEMP/crate/lib.rs"
+        rustc --edition 2021 --crate-type lib -D warnings --out-dir "$RUNNER_TEMP" "$RUNNER_TEMP/crate/lib.rs"

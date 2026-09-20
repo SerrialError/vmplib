@@ -40,21 +40,32 @@ namespace Printer {
     //   S = {{v, a},{v, a},...};
     void printVelocitySamplesCpp(std::ostream& out, const std::vector<VelocitySample>& samples);
 
-    // The Rust format: a standalone module declaring a sample struct and a
+    // The Rust format: a module holding a
     //   pub static SAMPLES: &[...] = &[...];
     // slice of one sample per dt, every value at full f64 precision. Each
     // sample's acceleration is the one that carries it to the next sample, so a
     // controller holding a sample for one dt feeds it forward as is; the last
     // sample carries 0.
+    //
+    // typePath is the Rust path of a sample type the crate this file is dropped
+    // into already defines, such as "crate::motion_profile::DriveSample". The
+    // file then writes its samples as that type and imports it, which is what
+    // lets one follower take every profile in a crate: a struct declared per
+    // file would be a separate type per file. Empty declares the struct in the
+    // file instead, which suits a crate holding a single profile. A path with no
+    // "::" names a type already in scope and is imported.
 
     // 1D samples as MotionSample { time, velocity, accel }. Position is left
     // out.
-    void printScalarSamplesRust(std::ostream& out, const std::vector<ScalarSample>& samples);
+    void printScalarSamplesRust(std::ostream& out, const std::vector<ScalarSample>& samples,
+                                const std::string& typePath = {});
 
     // Velocity samples as the same MotionSample { time, velocity, accel }.
-    void printVelocitySamplesRust(std::ostream& out, const std::vector<VelocitySample>& samples);
+    void printVelocitySamplesRust(std::ostream& out, const std::vector<VelocitySample>& samples,
+                                  const std::string& typePath = {});
 
     // Drive samples as DriveSample { time, linear_velocity, angular_velocity,
     // left_velocity, right_velocity, left_accel, right_accel }.
-    void printDriveSamplesRust(std::ostream& out, const std::vector<DriveSample>& samples);
+    void printDriveSamplesRust(std::ostream& out, const std::vector<DriveSample>& samples,
+                               const std::string& typePath = {});
 }

@@ -1,6 +1,7 @@
 #include "cli-args.hpp"
 
 #include <algorithm>
+#include <cctype>
 
 FlagMap parseFlags(const std::vector<std::string>& args, const std::vector<std::string>& allowed) {
     FlagMap flags;
@@ -52,4 +53,42 @@ std::optional<double> numberFlag(const FlagMap& flags, const std::string& flag) 
     } catch (const std::exception&) {
     }
     throw CliError(flag + " expects a number, got '" + text + "'");
+}
+
+namespace {
+// A Rust identifier: a letter or underscore, then letters, digits or
+// underscores. Raw identifiers, r#type, are not worth supporting for a path
+// naming a struct.
+bool isIdentifier(const std::string& text) {
+    const auto isWordChar = [](unsigned char c) { return std::isalnum(c) != 0 || c == '_'; };
+    if (text.empty() || (std::isdigit(static_cast<unsigned char>(text.front())) != 0)) {
+        return false;
+    }
+    return std::all_of(text.begin(), text.end(), isWordChar);
+}
+} // namespace
+
+std::string rustPathFlag(const FlagMap& flags, const std::string& flag) {
+    const auto it = flags.find(flag);
+    if (it == flags.end()) {
+        return {};
+    }
+    const std::string& text = it->second;
+
+    // A leading :: is the absolute form, ::my_crate::Type.
+    size_t at = text.rfind("::", 0) == 0 ? 2 : 0;
+    bool valid = at < text.size();
+    while (valid) {
+        const size_t separator = text.find("::", at);
+        const size_t end = separator == std::string::npos ? text.size() : separator;
+        valid = isIdentifier(text.substr(at, end - at));
+        if (separator == std::string::npos) {
+            break;
+        }
+        at = separator + 2;
+    }
+    if (!valid) {
+        throw CliError(flag + " expects a Rust path like crate::module::Type, got '" + text + "'");
+    }
+    return text;
 }

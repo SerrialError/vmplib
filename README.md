@@ -53,6 +53,7 @@ Leaving the mode off (`./bin/main --file ...`) also runs `path`.
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
 | `--format desmos\|cpp\|rust` | `desmos` | Output style |
+| `--rust-type <path>` | unset | With `--format rust`, the sample type to use instead of declaring one |
 
 `--format desmos` emits six lists you can paste straight into Desmos:
 
@@ -67,8 +68,8 @@ Leaving the mode off (`./bin/main --file ...`) also runs `path`.
 robot code that replays a fixed trajectory.
 
 `--format rust` emits a Rust module, for dropping into a robot crate with `mod`.
-It declares a `DriveSample` struct and a `SAMPLES` slice holding one per
-timestep, all `f64` at full precision:
+It holds a `SAMPLES` slice of `DriveSample`, one per timestep, all `f64` at full
+precision:
 
 | Field | Contents |
 |---|---|
@@ -82,6 +83,24 @@ A sample's accelerations are the ones that carry it to the next sample, so a
 controller that holds a sample for one timestep feeds them forward as they are.
 The last sample's are 0. From C++, `driveSamples(traj, config)` in
 `drive-samples.hpp` returns the same samples.
+
+By default the file declares the struct as well, which suits a crate holding one
+profile. A crate holding several wants them all to be the *same* type, since a
+struct declared per file is a separate type per file and no single follower can
+take them all. Point `--rust-type` at the one the crate defines:
+
+```bash
+./bin/main path --file path.txt --max-vel 1.8885 --max-accel 4.1220 \
+  --track-width 0.2951 --format rust --out src/profiles/red_left.rs \
+  --rust-type crate::motion_profile::DriveSample
+```
+
+The file then imports that path and writes every sample as it, declaring
+nothing. Field names, units and order are the same either way, so a type the
+crate already has works unchanged. A path with no `::`, such as `DriveSample`,
+is taken to be in scope already and is not imported. Either way `SAMPLES` carries
+`#[rustfmt::skip]`, so `cargo fmt` leaves it one sample per line instead of
+expanding each into nine.
 
 #### Path file format
 
@@ -121,6 +140,7 @@ Units are default SI units throughout.
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
 | `--format desmos\|cpp\|rust` | `desmos` | Output style |
+| `--rust-type <path>` | unset | With `--format rust`, the sample type to use instead of declaring one |
 
 Units are whatever the move file uses, as long as the limits match: metres for
 a lift, radians for an arm or turret. Gearing and motor conversions stay in your
@@ -133,6 +153,7 @@ each as `(t, value)`. `--format cpp` emits `S`, a C++ initialiser list with one
 `--format rust` emits a Rust module with a `MotionSample { time, velocity, accel }`
 struct and a `SAMPLES` slice holding one per timestep, as `f64`. Each sample's
 `accel` is the one that carries it to the next sample, and the last sample's is 0.
+`--rust-type` works here too, for a crate that defines the sample type itself.
 
 #### Move file format
 
@@ -181,6 +202,7 @@ const std::vector<ScalarSample> samples =
 | `--dt <s>` | `0.01` | Timestep |
 | `--out <path>` | `output.txt` | Where to write the result |
 | `--format desmos\|cpp\|rust` | `desmos` | Output style |
+| `--rust-type <path>` | unset | With `--format rust`, the sample type to use instead of declaring one |
 
 The mechanism starts at rest. It ramps to each target in turn at the
 acceleration limit, landing exactly on it, then holds it for `#HOLD` seconds,
